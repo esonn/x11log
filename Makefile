@@ -1,10 +1,9 @@
-# Sonnleitner Erik
-# Makefile for x11log, an X11 Keylogger
-# #
-#
+# (c) Sonnleitner Erik
+# Makefile for x11log
+
 DESTDIR = .
 CC = gcc
-CFLAGS = -I/usr/lib/X11R6/include
+CFLAGS = -I/usr/lib/X11R6/include -ggdb -Wall
 LIBS = -L/usr/X11R6/lib
 LDFLAGS = -lX11
 TARGET = x11log
@@ -20,3 +19,5 @@ $(TARGET).o: $(TARGET).c
 clean:
 	rm -f *.o 
 	rm -f $(TARGET)
+
+
