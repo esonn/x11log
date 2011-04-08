@@ -1,9 +1,9 @@
-# (c) Sonnleitner Erik
+# (c) Sonnleitner Erik <es@delta-xi.net>
 # Makefile for x11log
 
 DESTDIR = .
 CC = gcc
-CFLAGS = -I/usr/lib/X11R6/include -ggdb -Wall
+CFLAGS = -I/usr/lib/X11R6/include -ggdb -Wall -fno-builtin-log
 LIBS = -L/usr/X11R6/lib
 LDFLAGS = -lX11
 TARGET = x11log
