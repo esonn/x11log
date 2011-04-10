@@ -3,9 +3,9 @@
 
 DESTDIR = .
 CC = gcc
-CFLAGS = -I/usr/lib/X11R6/include -ggdb -Wall -fno-builtin-log
+CFLAGS = -I/usr/lib/X11R6/include -I/usr/include/curl -ggdb -Wall -fno-builtin-log -D_HAVE_CURL
 LIBS = -L/usr/X11R6/lib
-LDFLAGS = -lX11
+LDFLAGS = -lX11 -lcurl
 TARGET = x11log
 
 all: $(TARGET)

