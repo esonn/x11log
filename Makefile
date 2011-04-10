@@ -3,7 +3,9 @@
 
 DESTDIR = .
 CC = gcc
-CFLAGS = -I/usr/lib/X11R6/include -I/usr/include/curl -ggdb -Wall -fno-builtin-log -D_HAVE_CURL
+CFLAGS =  -ggdb -Wall -fno-builtin-log
+INCLUDES = -I/usr/lib/X11R6/include -I/usr/include/curl
+DEFINES = -D_HAVE_CURL
 LIBS = -L/usr/X11R6/lib
 LDFLAGS = -lX11 -lcurl
 TARGET = x11log
@@ -11,10 +13,10 @@ TARGET = x11log
 all: $(TARGET)
 
 $(TARGET): $(TARGET).o
-	$(CC) -o $@ $(TARGET).o $(LIBS) $(LDFLAGS)
+	$(CC) -o $@ $(TARGET).o $(LIBS) $(LDFLAGS) $(INCLUDES) $(DEFINES)
 
 $(TARGET).o: $(TARGET).c
-	$(CC) $(CFLAGS) -c $(TARGET).c
+	$(CC) $(INCLUDES) $(DEFINES) $(CFLAGS) -c $(TARGET).c
 
 clean:
 	rm -f *.o 
