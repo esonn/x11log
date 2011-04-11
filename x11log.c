@@ -6,18 +6,8 @@
  * (c) Erik Sonnleitner 2007/2011, es@delta-xi.net
  * www.delta-xi.net, launchpad.net/x11log
  *
- * TODOs:
- *   - fatal() doesn't yet free heap memory (logfile, hostname, etc)
- *   - process_name in obfuscation mode shouldn't be statically defined
- *   - keys which are pressed for a longer period of time, they are not
- *     logged multiple times (this would depend on the repeat delay and
- *     speed of X keyboard settings); although this is not (yet) implemented,
- *     it won't have much impact on "regular" logs.
- *   - HTTP loggin: support POST requests
- *   - Manpage would be cool
- *
- * Concerning Bugs, please refer to the offial project-page on Launchpad!
- * http://launchpad.net/x11log
+ * TODOs and Bugs: Please refer to the official project-page on Launchpad!
+ *  -> http://launchpad.net/x11log
  * */
 
 #include <stdio.h>
