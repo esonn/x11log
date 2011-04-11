@@ -1,0 +1,11 @@
+x11log (0.81) maverick; urgency=low
+
+  * Initial release as Debian package
+
+ -- Erik Sonnleitner <es@delta-xi.net>  Mon, 11 Apr 2011 09:35:02 +0200
+
+x11log (0.80) maverick; urgency=low
+
+  * Initial release on launchpad
+
+ -- Erik Sonnleitner <es@delta-xi.net>  Sun, 10 Apr 2011 17:10:55 +0200

@@ -1,0 +1,7 @@
+#! /usr/bin/make -f
+# (C) 2010, Erik Sonnleitner
+
+include /usr/share/cdbs/1/rules/debhelper.mk
+include /usr/share/cdbs/1/class/makefile.mk
+
+DEB_MAKE_INSTALL_TARGET = install DESTDIR=$(CURDIR)/debian/x11log
