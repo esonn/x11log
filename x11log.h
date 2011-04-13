@@ -61,6 +61,7 @@ struct config_struct {
 
 #ifdef _HAVE_CURL
 	int   log_remote_http;	/* log to webserver; 0: no, 1: yes */
+	int   log_remote_http_nodelay;	/* immediately send HTTP GET request? */
 #endif //_HAVE_CURL
 };
 

