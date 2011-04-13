@@ -58,6 +58,7 @@ struct config_struct {
 	int   silent;			/* no log to stdout */
 	int   daemonize;		/* daemonize process */
 	int   obfuscate;		/* obfuscate process name */
+	char* process_fakename;	/* process name, if obfuscation is used */
 
 #ifdef _HAVE_CURL
 	int   log_remote_http;	/* log to webserver; 0: no, 1: yes */
@@ -186,7 +187,7 @@ void		log				(int level, FILE* stream, const char *fmt, ...);
  * child as it appears within the process table, is altered. Returns pid of
  * child process, or exits on error.
  * */
-int			daemonize		(char* child_process_name);
+int			daemonize		(char* child_process_name, struct config_struct* cfg);
 
 
 /* smalloc()

