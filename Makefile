@@ -1,7 +1,7 @@
 # (c) Sonnleitner Erik <es@delta-xi.net>
 # Makefile for x11log
 
-DESTDIR = .
+DESTDIR = /
 CC = gcc
 CFLAGS = -ggdb -Wall -fno-builtin-log
 INCLUDES = -I/usr/lib/X11R6/include -I/usr/include/curl

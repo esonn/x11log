@@ -1,3 +1,9 @@
+x11log (0.82) quantal; urgency=low
+
+  * Added manual page, upgraded to quantal.
+
+ -- Erik Sonnleitner <es@delta-xi.net>  Thu, 31 Jan 2013 13:55:02 +0200
+
 x11log (0.81) maverick; urgency=low
 
   * Initial release as Debian package
