@@ -10,11 +10,14 @@ LIBS = -L/usr/X11R6/lib
 EXTRA_LDFLAGS = -lX11 -lcurl
 LDFLAGS = -lX11 -lcurl
 TARGET = x11log
+MANPAGE_POD = manpage.pod
+POD2MAN = /usr/bin/pod2man
 
 all: $(TARGET)
 
 $(TARGET): $(TARGET).o
 	$(CC) -o $@ $(TARGET).o $(LIBS) $(EXTRA_LDFLAGS) $(INCLUDES) $(DEFINES)
+	$(POD2MAN) --center "Utils" $(MANPAGE_POD) > $(TARGET).1
 
 $(TARGET).o: $(TARGET).c
 	$(CC) $(INCLUDES) $(DEFINES) $(CFLAGS) -c $(TARGET).c
@@ -26,3 +29,4 @@ clean:
 install:
 	mkdir -p $(DESTDIR)/usr/bin/
 	install -m 0644 $(TARGET) $(DESTDIR)/usr/bin/
+

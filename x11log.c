@@ -44,6 +44,7 @@ static char keymap[2][XKBD_WIDTH],
 		*kbd = keymap[0],
 		*tmp = keymap[1];
 
+
 static XModifierKeymap *map;
 static Display *dsp;
 static int verbosity = 1;
@@ -61,11 +62,20 @@ int main (int argc, char ** argv) {
 
 	timestart = initialize(argc, argv, &config);
 
-	/* NULL defaults to what is given in DISPLAY environment variable. However,
-	 * in some cases (e.g. within a VC) this variable is not set; so better go
-	 * with :0.0, which is the correct default display in 99% of all cases. This
-	 * also works via SSH connections, as long as getuid() user is running X. */
-	dsp = XOpenDisplay( (config.display) ? config.display : X_DEFAULT_DISPLAY );
+	/* Find the right X display for the session. If the user has passed a
+	* display as argument, the name of the display is already stored in the
+	* configuration. We don't touch it.
+	* If the DISPLAY environment variable exists and contains some data, we
+	* use this value as display. As last resort, we use the default ":0.0".
+	* -- thanks for frubi for this
+	*/
+	if((config.display == NULL) && (getenv("DISPLAY") != NULL)
+		&& (strlen(getenv("DISPLAY")) > 0))
+		config.display = strdup(getenv("DISPLAY"));
+	else if(config.display == NULL) 
+		config.display = X_DEFAULT_DISPLAY;
+
+	dsp = XOpenDisplay(config.display);
 	if(!dsp)
 		fatal("Cannot open display");
 
@@ -111,7 +121,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	signal(SIGHUP,  signal_handler);
 
 	/* set default values for cmdline options */
-	config->display = X_DEFAULT_DISPLAY;
+	config->display = NULL;
 	config->logfile = NULL;
 	config->logfd = stdout;
 	config->silent = 0;

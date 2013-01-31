@@ -1,0 +1,92 @@
+=encoding utf8
+
+
+=head1 NAME
+
+x11log - A tiny, non-privileged, unobtrusive local/remote keylogger for X11
+
+=head1 SYNPOSIS
+
+x11log [-sfrhHPdqoO?]
+
+
+=head1 DESCRIPTION
+
+x11log is a free (GPLv3) keylogger for the X Window System. It's main intent
+was to be able to run without root privileges. It is unobstrusive, shows a low
+memory footprint, and allows local (file) and remote (to any TCP listener, e.g.
+netcat or a HTTP server) logging.
+x11log can be run in daemon mode and obfuscate/change it's own program name
+in order not to raise suspicion in logs and process managers.
+
+
+=head1 COMMAND-LINE OPTIONS
+
+If x11log is started without arguments, the process will not daemonize and
+echo keystrokes on stdout (regardless whether the terminal it is running in
+has the focus or not).
+
+=over
+
+=item B<-s DISPLAY>
+
+X-Display to use, default is :0.0
+
+=item B<-f LOGFILE>
+
+Log keystrokes to file instead of STDOUT. Text is appended, logfile created if it does not exist.
+
+=item B<-r HOST:PORT>
+
+Log keystrokes to remote host. The other end needs a program listening on the specified TCP port (e.g. using BSD netcat: 'nc -p <port> -k')
+
+=item B<-h HOST>
+
+Log keystrokes to webserver within HTTP requests headers.
+
+=item B<-H HOST>
+
+like -h, but without buffering.
+
+=item B<-P>
+
+use POST instead of GET requests.
+
+=item B<-d>
+
+Daemonize (requires -f or -r or both).
+
+=item B<-q>
+
+Be quiet (no output to console).
+
+=item B<-o>
+
+Obfuscate process name in process table.
+
+=item B<-O NAME>
+
+Rename process to given argument.
+
+=item B<-?>
+
+Print usage.
+
+=back
+
+
+=head1 AUTHORS
+
+B<Erik Sonnleitner> (es@delta-xi.net) 2007 - 2013.
+
+x11log is hosted on launchpad at http://launchpad.net/x11log
+
+=head1 BUGS
+
+There are currently no bugs I'm aware of. If you choose HTTP logging, make sure
+your server is okay with very frequent requests from the same source (enabling
+buffering via B<-h> is recommended.
+
+If you find any bugs, please report them at B<https://bugs.launchpad.net/x11log>
+
+
