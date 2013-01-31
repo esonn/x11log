@@ -12,6 +12,7 @@ LDFLAGS = -lX11 -lcurl
 TARGET = x11log
 MANPAGE_POD = manpage.pod
 POD2MAN = /usr/bin/pod2man
+MANDIR = /usr/share/man/man1
 
 all: $(TARGET)
 
@@ -29,4 +30,8 @@ clean:
 install:
 	mkdir -p $(DESTDIR)/usr/bin/
 	install -m 0644 $(TARGET) $(DESTDIR)/usr/bin/
+	install -m 0644 $(TARGET).1 $(MANDIR)/$(TARGET).1
 
+uninstall:
+	rm -f $(DESTDIR)/usr/bin/$(TARGET)
+	rm -f $(MANDIR)/$(TARGET).1
