@@ -4,15 +4,16 @@
 DESTDIR ?= .
 CC = gcc
 #CFLAGS = -ggdb -fPIE -m32 -Wall -fno-builtin-log -Wno-multichar -std=c99 -Wno-deprecated-declarations
-CFLAGS = -ggdb -fPIE -Wall -std=c99 -fno-builtin-log -Wall -Wno-multichar -Wno-missing-braces -Wno-deprecated-declarations
+#CFLAGS = -ggdb -fPIE -Wall -std=c99 -fno-builtin-log -Wall -Wno-multichar -Wno-missing-braces -Wno-deprecated-declarations
+CFLAGS = -fPIE -Wall -std=c99 -fno-builtin-log -Wall -Wno-multichar -Wno-missing-braces -Wno-deprecated-declarations
 # -fno-builtin-log:             we have our own implementation of log()
 # -Wno-multichar:               we use multi-chars in the source (sorry for that)
 # -Wno-depricated-declarations: we use XKeycodeToKeysym from Xlib.h
 # -Wno-missing-braces:          see GCC bug 53119
 
-INCLUDES = -I/usr/lib/X11R6/include -I/usr/include/curl
+INCLUDES ?= -I/usr/lib/X11R6/include -I/usr/include/curl
 DEFINES = -D_HAVE_CURL -D_UNICODE -D_GNU_SOURCE
-LIBS = -L/usr/X11R6/lib
+LIBS ?= -L/usr/X11R6/lib
 EXTRA_LDFLAGS = -lX11 -lcurl
 LDFLAGS = -lX11 -lcurl
 TARGET = x11log
