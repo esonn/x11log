@@ -75,6 +75,27 @@ Print usage.
 =back
 
 
+=head1 SIGNALS
+
+x11log handles the following signals:
+
+=over
+
+=item B<SIGTERM>
+
+Flushes keystroke buffers and terminates x11log normally.
+
+=item B<SIGINT>
+
+Same as B<SIGTERM>.
+
+=item B<SIGHUP>
+
+Force x11log to flush the keystroke log buffer immediately and continue
+normal operation.
+
+=back
+
 =head1 AUTHORS
 
 B<Erik Sonnleitner> (es@delta-xi.net) 2007 - 2013.
@@ -85,7 +106,7 @@ x11log is hosted on launchpad at http://launchpad.net/x11log
 
 There are currently no bugs I'm aware of. If you choose HTTP logging, make sure
 your server is okay with very frequent requests from the same source (enabling
-buffering via B<-h> is recommended.
+buffering via B<-h> is recommended).
 
 If you find any bugs, please report them at B<https://bugs.launchpad.net/x11log>
 

@@ -1,3 +1,15 @@
+x11log (0.84) quantal; urgency=low
+
+  * Another correction of the Makefile. Pre-creating all directories.
+
+ -- Erik Sonnleitner <es@delta-xi.net>  Thu, 31 Jan 2013 18:00:02 +0200
+
+x11log (0.83) quantal; urgency=low
+
+  * Corrected Makefile to build properly.
+
+ -- Erik Sonnleitner <es@delta-xi.net>  Thu, 31 Jan 2013 16:36:02 +0200
+
 x11log (0.82) quantal; urgency=low
 
   * Added manual page, upgraded to quantal.

