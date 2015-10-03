@@ -37,7 +37,7 @@ clean:
 install:
 	mkdir -p $(DESTDIR)/usr/bin/
 	mkdir -p $(DESTDIR)/usr/share/man/man1/
-	install -m 0644 $(TARGET) $(DESTDIR)/usr/bin/
+	install -m 0755 $(TARGET) $(DESTDIR)/usr/bin/
 	install -m 0644 $(TARGET).1 $(DESTDIR)/usr/share/man/man1/$(TARGET).1
 
 uninstall:
