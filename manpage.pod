@@ -98,9 +98,10 @@ normal operation.
 
 =head1 AUTHORS
 
-B<Erik Sonnleitner> (es@delta-xi.net) 2007 - 2013.
+B<Erik Sonnleitner> (es@delta-xi.net) 2007 - 2015.
+B<Felix Rublack> for X11 display patch
 
-x11log is hosted on launchpad at http://launchpad.net/x11log
+x11log is hosted on Github at B<https://github.com/esonn/x11log>
 
 =head1 BUGS
 
@@ -108,6 +109,6 @@ There are currently no bugs I'm aware of. If you choose HTTP logging, make sure
 your server is okay with very frequent requests from the same source (enabling
 buffering via B<-h> is recommended).
 
-If you find any bugs, please report them at B<https://bugs.launchpad.net/x11log>
+If you find any bugs, please report them at B<https://github.com/esonn/x11log>
 
 
