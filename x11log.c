@@ -3,11 +3,10 @@
  * x11log - an unprivileged, userspace keylogger for X11
  *
  * This code is licensed under GPLv3.
- * (c) Erik Sonnleitner 2007/2011, es@delta-xi.net
- * www.delta-xi.net, launchpad.net/x11log
+ * (c) Erik Sonnleitner 2007/2015, es@delta-xi.net
+ * www.delta-xi.net, https://github.com/esonn/x11log
  *
- * TODOs and Bugs: Please refer to the official project-page on Launchpad!
- *  -> http://launchpad.net/x11log
+ * TODOs and Bugs: Please refer to the official project-page on Github
  * */
 
 #include <stdio.h>
