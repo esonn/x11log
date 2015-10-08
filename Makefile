@@ -14,10 +14,10 @@ CFLAGS = -fPIE -Wall -std=c99 -fno-builtin-log -Wall -Wno-multichar -Wno-missing
 INCLUDES ?= -I/usr/lib/X11R6/include -I/usr/include/curl
 DEFINES = -D_HAVE_CURL -D_UNICODE -D_GNU_SOURCE
 LIBS ?= -L/usr/X11R6/lib
-EXTRA_LDFLAGS = -lX11 -lcurl
-LDFLAGS = -lX11 -lcurl
-TARGET = x11log
-MANPAGE_POD = manpage.pod
+EXTRA_LDFLAGS ?= -lX11 -lcurl
+LDFLAGS ?= -lX11 -lcurl
+TARGET ?= x11log
+MANPAGE_POD ?= manpage.pod
 POD2MAN ?= /usr/bin/pod2man
 MANDIR ?= /usr/share/man/man1
 
