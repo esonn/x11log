@@ -1,5 +1,5 @@
 # (c) Sonnleitner Erik <es@delta-xi.net>
-# Makefile for x11log
+# Makefile for x11log, updated for clean build on Arch
 
 DESTDIR ?= .
 CC = gcc
@@ -43,3 +43,5 @@ install:
 uninstall:
 	rm -f $(DESTDIR)/usr/bin/$(TARGET)
 	rm -f $(DESTDIR)/usr/share/man/man1/$(TARGET).1
+
+
