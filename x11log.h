@@ -3,12 +3,17 @@
  * x11log - an unprivileged, userspace keylogger for X11
  *
  * This code is licensed under GPLv3.
- * (c) Erik Sonnleitner 2007/2011, es@delta-xi.net
- * www.delta-xi.net
+ * (c) Erik Sonnleitner 2007/2015,
+ *    es@delta-xi.net || erik.sonnleitner@fh-hagenberg.at
+ * www.delta-xi.net, https://github.com/esonn/x11log
+ *
+ * TODOs and Bugs: Please refer to the official project-page on Github
  * */
 
 #ifndef _X11LOG_H
 #define _X11LOG_H
+
+#define X11LOG_VERSION		"0.82-beta"
 
 /* global defines */
 #define MAX_KEYLEN			16
@@ -309,6 +314,10 @@ int			linebuf_update	(const char* s, struct config_struct* config);
  * keyboard layouts, '@' is typed AltGr+q. Instead of showing VIS_MOD_XXX + q,
  * we can replace it with the correct character. */
 void		merge_split_keys(char key, const char mod, const char replacement);
+
+/* Print usage/help */
+void		print_usage(char* basename);
+
 
 #endif // _X11LOG_H
 
