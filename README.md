@@ -9,11 +9,11 @@ you want remote logging to a HTTP server, libcurl.
    an actively running X session. However, it's not necessary to run the logger
    from within the X environment (e.g. a graphical xterminal) - it also works 
    when called via SSH or on a virtual console.
-   
- - Stealthy daemon mode. You may run the logger as background-daemon, with the 
- possibility of completely omitting any console output, altering its name within
- the process list, and fully hide given command-line arguments. By default, it's
- renaming itself to a kernel thread.
+
+ - Stealthy daemon mode. You may run the logger as background-daemon, with the
+   possibility of completely omitting any console output, altering its name
+   within the process list, and fully hide given command-line arguments. By
+   default, it's renaming itself to a kernel thread.
  
  - Local logging to file
  
@@ -25,3 +25,4 @@ you want remote logging to a HTTP server, libcurl.
  - Remote logging to your web-server. Alternatively, you may choose a web-server,
    to which the keystrokes are sent, encapsulated within a HTTP GET request, and 
    "hidden" in a HTTP header field (User-Agent by default).
+
