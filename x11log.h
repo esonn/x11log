@@ -172,14 +172,16 @@ const struct remap_struct {
  * more representive single-characters unicode equivalents for better
  * readability (this should be the default). */
 #ifdef _UNICODE
-	{"BackSpace","←"},
+	{"BackSpace","⌫"},
 
 	{"Up","↑"},
 	{"Down","↓"},
 	{"Left","←"},
 	{"Right","→"},
 
-	{"Tab","↓"},
+	{"Tab","⇥"},
+	{"ISO_Left_Tab","⇤"},
+	{"ISO_Level3_Shift",""},
 #else 
 	//{"BackSpace","←"},
 

@@ -367,11 +367,12 @@ char* decodeKey(int code, int down, int mod) {
 	if(!str)
 		return "";
 
+    //printf("DBG: <%s>\n", str);
 	sprintf(keystroke_readable, "%s", str);
 
 	/* shortenize (remap) char str if in mapping table */
 	while (remap[i].src[0]) {
-		if (strstr(keystroke_readable, remap[i].src)) {
+		if (strcmp(keystroke_readable, remap[i].src) == 0) {
 			strcpy(keystroke_readable, remap[i].dst);
 			//remapChar = 1;
 			break;

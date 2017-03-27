@@ -18,7 +18,8 @@ EXTRA_LDFLAGS ?= -lX11 -lcurl
 LDFLAGS ?= -lX11 -lcurl
 TARGET ?= x11log
 MANPAGE_POD ?= manpage.pod
-POD2MAN ?= /usr/bin/pod2man
+POD2MAN ?= pod2man
+#POD2MAN ?= /usr/bin/pod2man
 MANDIR ?= /usr/share/man/man1
 
 all: $(TARGET)
